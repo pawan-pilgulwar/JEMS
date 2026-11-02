@@ -1,6 +1,7 @@
 import { ObjectId, type Db, type Document } from "mongodb";
 import { getDatabase } from "@/lib/db/mongodb";
 import { scoreAgainst } from "@/lib/agents/engine";
+import type { StudentAdvisorResponse } from "@/lib/agent/types";
 
 /** Typed handle to the database (the JS mongodb helper is untyped). */
 async function getDb(): Promise<Db> {
@@ -688,22 +689,76 @@ export interface DashboardData {
   /** Skill questionnaire completed (the "assess first" gate). */
   assessmentDone: boolean;
   verifiedSkills: number;
+  latestAdvisorReport?: StudentAdvisorResponse | null;
+}
+
+export async function getStoredStudentAdvisorReport(userId: string): Promise<StudentAdvisorResponse | null> {
+  if (!ObjectId.isValid(userId)) return null;
+  return safe("getStoredStudentAdvisorReport", null, async () => {
+    const db = await getDb();
+    const doc = await db.collection("studentAdvisorReports").findOne(
+      { studentId: oid(userId) },
+      { sort: { createdAt: -1 } }
+    );
+    if (!doc || !doc.report) return null;
+    return doc.report as StudentAdvisorResponse;
+  });
+}
+
+export async function saveStudentAdvisorReport(userId: string, report: StudentAdvisorResponse): Promise<void> {
+  if (!ObjectId.isValid(userId)) return;
+  await safe("saveStudentAdvisorReport", undefined, async () => {
+    const db = await getDb();
+    await db.collection("studentAdvisorReports").updateOne(
+      { studentId: oid(userId) },
+      {
+        $set: {
+          studentId: oid(userId),
+          report,
+          updatedAt: new Date(),
+        },
+        $setOnInsert: { createdAt: new Date() },
+      },
+      { upsert: true }
+    );
+  });
 }
 
 export async function getDashboardData(
   userId: string,
 ): Promise<DashboardData> {
-  const [matches, interviews, progress, resume, profileDoc] = await Promise.all([
+  const [matches, interviews, progress, resume, profileDoc, advisorReport] = await Promise.all([
     getJobMatches(userId),
     getMockInterviews(userId),
     getProgress(userId),
     getStudentResume(userId),
     (async () => (await getDb()).collection("studentProfiles").findOne({ userId: oid(userId) }))(),
+    getStoredStudentAdvisorReport(userId),
   ]);
   const assessmentDone = Boolean((profileDoc?.assessment as { questionnaireAt?: unknown } | undefined)?.questionnaireAt);
   const verifiedSkills = (Array.isArray(profileDoc?.skills) ? profileDoc!.skills : []).filter((s: { verified?: unknown }) => Boolean(s?.verified)).length;
 
-  // These two are not covered by a sub-loader, so guard them independently.
+  const hasResume = Boolean(
+    resume?.versions.some((v) => resumeHasContent(v.data)),
+  );
+
+  // Dynamic live readiness calculation from actual collections
+  let liveCalculatedReadiness = 0;
+  if (ObjectId.isValid(userId)) {
+    const db = await getDb();
+    const roadmaps = await db.collection("roadmapProgress").find({ studentId: oid(userId) }).toArray();
+    const modulesPassed = roadmaps.reduce((acc, r) => acc + (Array.isArray(r.passedModules) ? r.passedModules.length : 0), 0);
+
+    const skillPoints = Math.min(35, verifiedSkills * 7);
+    const resumePoints = hasResume ? 10 + (resume?.atsScore ? Math.round((resume.atsScore / 100) * 15) : 5) : 0;
+    const interviewPoints = Math.min(20, interviews.completed * 5);
+    const learningPoints = Math.min(20, modulesPassed * 5);
+    liveCalculatedReadiness = Math.min(100, skillPoints + resumePoints + interviewPoints + learningPoints);
+  }
+
+  const finalReadiness = Math.max(progress.readiness, liveCalculatedReadiness);
+
+  // Live upcoming & activity guarded
   const { upcoming, activity } = await safe(
     "getDashboardData:extra",
     { upcoming: [] as DashboardData["upcoming"], activity: [] as DashboardData["activity"] },
@@ -712,7 +767,7 @@ export async function getDashboardData(
       const _id = ObjectId.isValid(userId) ? oid(userId) : null;
       if (!_id) return { upcoming: [], activity: [] };
 
-      const [analyticsDoc, activityRows] = await Promise.all([
+      const [analyticsDoc, activityRows, openPapers] = await Promise.all([
         db.collection("studentAnalytics").findOne({ studentId: _id }),
         db
           .collection("activityLogs")
@@ -720,16 +775,32 @@ export async function getDashboardData(
           .sort({ createdAt: -1 })
           .limit(5)
           .toArray(),
+        db
+          .collection("aiPapers")
+          .find({ studentId: _id, status: { $in: ["ready", "in-progress"] } })
+          .sort({ createdAt: -1 })
+          .limit(3)
+          .toArray(),
       ]);
       const analytics = (analyticsDoc ?? {}) as Record<string, unknown>;
 
-      const upcoming = Array.isArray(analytics.upcoming)
+      let upcoming: DashboardData["upcoming"] = Array.isArray(analytics.upcoming)
         ? analytics.upcoming.map((u: { title?: unknown; when?: unknown; tag?: unknown }) => ({
             title: str(u.title),
             when: str(u.when),
             tag: str(u.tag),
           }))
         : [];
+
+      // If no static upcoming items, derive dynamically from real open tests/interviews
+      if (upcoming.length === 0 && openPapers.length > 0) {
+        upcoming = openPapers.map((p) => ({
+          title: `${str(p.subject)} ${str(p.purpose) === "interview" ? "Interview" : "Assessment"}`,
+          when: "Pending completion",
+          tag: str(p.status) === "in-progress" ? "In progress" : "Scheduled",
+        }));
+      }
+
       const activity = activityRows.map((r) => ({
         text: str(r.text),
         time: timeAgo(r.createdAt),
@@ -738,12 +809,8 @@ export async function getDashboardData(
     },
   );
 
-  const hasResume = Boolean(
-    resume?.versions.some((v) => resumeHasContent(v.data)),
-  );
-
   return {
-    readiness: progress.readiness,
+    readiness: finalReadiness,
     atsScore: resume?.atsScore ?? null,
     interviewsCompleted: interviews.completed,
     interviewsAverage: interviews.average,
@@ -756,5 +823,6 @@ export async function getDashboardData(
     hasResume,
     assessmentDone,
     verifiedSkills,
+    latestAdvisorReport: advisorReport,
   };
 }

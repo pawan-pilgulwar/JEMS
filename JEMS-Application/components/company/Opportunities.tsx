@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { LoaderCircle, Plus, Users, X } from "lucide-react";
+import { LoaderCircle, Plus, Sparkles, Users, X } from "lucide-react";
 import { Card } from "@/components/dashboard/student/ui";
 import { OPPORTUNITY_TYPES } from "@/lib/company/constants";
 import type { OpeningView } from "@/lib/db/company";
@@ -17,8 +17,53 @@ export default function Opportunities({ company, openings }: { company: string; 
   const [showForm, setShowForm] = useState(params.get("new") === "1");
   const [form, setForm] = useState(EMPTY);
   const [saving, setSaving] = useState(false);
+  const [extracting, setExtracting] = useState(false);
+  const [extractMsg, setExtractMsg] = useState("");
   const [error, setError] = useState("");
   const set = (k: keyof typeof EMPTY) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => setForm((f) => ({ ...f, [k]: e.target.value }));
+
+  const extractSkillsWithAi = async () => {
+    if (!form.role || !form.description) {
+      setError("Please provide both a Role title and Description before extracting skills with AI.");
+      return;
+    }
+    setError("");
+    setExtractMsg("");
+    setExtracting(true);
+    try {
+      const res = await fetch("/api/company/ai/extract-skills", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ role: form.role, description: form.description }),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        data?: {
+          required_skills: string[];
+          nice_to_have_skills: string[];
+          experience_level: string;
+          screening_advice: string;
+        };
+        error?: string;
+      };
+      if (!res.ok || !data.data) {
+        throw new Error(data.error || "Failed to extract skills with AI.");
+      }
+      setForm((prev) => ({
+        ...prev,
+        requiredSkills: data.data!.required_skills.join(", "),
+        niceToHave: data.data!.nice_to_have_skills.join(", "),
+        experience: prev.experience || data.data!.experience_level,
+      }));
+      setExtractMsg(
+        `AI extracted ${data.data.required_skills.length} required skills & ${data.data.nice_to_have_skills.length} nice-to-have skills!`
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to extract skills.");
+    } finally {
+      setExtracting(false);
+    }
+  };
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -61,9 +106,33 @@ export default function Opportunities({ company, openings }: { company: string; 
             <Field label="Location"><input value={form.location} onChange={set("location")} placeholder="Bengaluru / Remote" className={inputClass} /></Field>
             <Field label="Stipend / salary"><input value={form.salary} onChange={set("salary")} placeholder="₹25k/month or ₹6–9 LPA" className={inputClass} /></Field>
             <Field label="Experience"><input value={form.experience} onChange={set("experience")} placeholder="0–1 years / students" className={inputClass} /></Field>
+            
+            <div className="md:col-span-2">
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-xs font-semibold text-navy">Description *</label>
+                <button
+                  type="button"
+                  onClick={extractSkillsWithAi}
+                  disabled={extracting}
+                  className="inline-flex items-center gap-1.5 rounded-md bg-orange/10 px-2.5 py-1 text-xs font-semibold text-orange hover:bg-orange/20 transition disabled:opacity-50"
+                >
+                  {extracting ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+                  {extracting ? "Extracting with AI…" : "AI Auto-Extract Skills from Description"}
+                </button>
+              </div>
+              <textarea
+                required
+                value={form.description}
+                onChange={set("description")}
+                placeholder="Paste the job description here. Click 'AI Auto-Extract Skills' to automatically fill required & nice-to-have skills matching student roadmaps…"
+                className={textareaClass}
+              />
+              {extractMsg && <p className="mt-1 text-xs font-medium text-emerald">{extractMsg}</p>}
+            </div>
+
             <Field label="Required skills *" hint="Comma-separated. Use the same names students earn on roadmaps (React, SQL, Docker…)."><input required value={form.requiredSkills} onChange={set("requiredSkills")} placeholder="Java, Spring Boot, SQL" className={inputClass} /></Field>
             <Field label="Nice to have"><input value={form.niceToHave} onChange={set("niceToHave")} placeholder="Docker, Microservices" className={inputClass} /></Field>
-            <div className="md:col-span-2"><Field label="Description"><textarea value={form.description} onChange={set("description")} placeholder="What the role does, what the student will learn…" className={textareaClass} /></Field></div>
+            
             {error && <p className="text-sm text-red-600 md:col-span-2">{error}</p>}
             <div className="md:col-span-2"><button type="submit" disabled={saving} className={primaryBtn}>{saving ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />} Publish opening</button></div>
           </form>

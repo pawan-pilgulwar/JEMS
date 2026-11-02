@@ -1,5 +1,6 @@
 import { ObjectId, type Db } from "mongodb";
 import { getDatabase } from "@/lib/db/mongodb";
+import type { InstitutionInsightsResponse } from "@/lib/agent/types";
 
 /**
  * Institution (admin) analytics: aggregates across the institution's students
@@ -38,6 +39,7 @@ export interface InstitutionDashboard {
     applications: number;
     bestStatus: string;
   }[];
+  latestInsights?: InstitutionInsightsResponse | null;
 }
 
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
@@ -170,9 +172,42 @@ export async function getInstitutionDashboard(userId: string): Promise<Instituti
         interested: interestCount.get(c._id.toString()) ?? 0,
       })),
       students,
+      latestInsights: await getStoredInstitutionInsights(institution),
     };
   } catch (err) {
     console.error("[institution] getInstitutionDashboard failed:", err);
     return null;
+  }
+}
+
+
+export async function getStoredInstitutionInsights(institution: string): Promise<InstitutionInsightsResponse | null> {
+  try {
+    const db = await getDb();
+    const doc = await db.collection("institutionAnalyses").findOne(
+      { institution: str(institution) },
+      { sort: { createdAt: -1 } }
+    );
+    if (!doc || !doc.insights) return null;
+    return doc.insights as InstitutionInsightsResponse;
+  } catch (err) {
+    console.error("[institution] getStoredInstitutionInsights failed:", err);
+    return null;
+  }
+}
+
+export async function saveInstitutionInsights(institution: string, insights: InstitutionInsightsResponse): Promise<boolean> {
+  try {
+    const db = await getDb();
+    const now = new Date();
+    await db.collection("institutionAnalyses").insertOne({
+      institution: str(institution),
+      insights,
+      createdAt: now,
+    });
+    return true;
+  } catch (err) {
+    console.error("[institution] saveInstitutionInsights failed:", err);
+    return false;
   }
 }

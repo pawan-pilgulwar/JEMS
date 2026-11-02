@@ -407,3 +407,129 @@ export interface LearningNotesResponse {
   practice: string[];
   warnings: string[];
 }
+
+
+// ── /agents/institution-insights ────────────────────────────────
+
+export interface InstitutionInsightsRequest {
+  institution_name: string;
+  cohort_summary: {
+    total_students: number;
+    avg_readiness: number;
+    top_roles: string[];
+    top_verified_skills: string[];
+    skill_gaps: { skill: string; coverage: number; gap: number }[];
+  };
+  market_demand: {
+    top_skills: string[];
+    total_openings: number;
+  };
+}
+
+export interface CurriculumBottleneck {
+  skill: string;
+  gap_severity: "High" | "Medium" | "Low";
+  impact_on_placements: string;
+  recommended_action: string;
+}
+
+export interface InstitutionActionPlanItem {
+  priority: "Immediate (1-30 days)" | "Medium-Term (1-3 months)" | "Strategic (Next Semester)";
+  area: string;
+  action: string;
+  expected_outcome: string;
+}
+
+export interface InstitutionInsightsResponse {
+  executive_summary: string;
+  cohort_health_rating: "Critical" | "Needs Attention" | "Moderate" | "Strong";
+  curriculum_bottlenecks: CurriculumBottleneck[];
+  placement_risks: string[];
+  action_plan: InstitutionActionPlanItem[];
+}
+
+// ── /agents/curriculum ──────────────────────────────────────────
+
+export interface CurriculumRequest {
+  subject: string;
+  current_syllabus?: string[];
+  target_role?: string;
+  market_demand_skills: string[];
+}
+
+export interface ModernModule {
+  module_title: string;
+  key_topics: string[];
+  industry_relevance: string;
+}
+
+export interface PracticalLabProject {
+  title: string;
+  description: string;
+  tools_used: string[];
+}
+
+export interface CurriculumResponse {
+  subject: string;
+  alignment_score: number;
+  summary: string;
+  outdated_topics: string[];
+  missing_industry_skills: string[];
+  modern_modules: ModernModule[];
+  practical_lab_projects: PracticalLabProject[];
+}
+
+// ── /agents/job-skills ──────────────────────────────────────────
+
+export interface JobSkillsRequest {
+  role: string;
+  description: string;
+}
+
+export interface JobSkillsResponse {
+  role: string;
+  required_skills: string[];
+  nice_to_have_skills: string[];
+  experience_level: string;
+  screening_advice: string;
+  suggested_topics_to_test: string[];
+}
+
+
+// ── /agents/student-advisor ──────────────────────────────────────
+
+export interface StudentAdvisorRequest {
+  student_name?: string;
+  target_role?: string;
+  verified_skills?: string[];
+  unverified_skills?: string[];
+  resume_ats_score?: number | null;
+  interviews_completed?: number;
+  interviews_avg_score?: number;
+  roadmaps_in_progress?: string[];
+  market_demand_skills?: string[];
+}
+
+export interface StudentCriticalGap {
+  skill: string;
+  importance: string;
+  reason: string;
+}
+
+export interface StudentImmediateAction {
+  priority: number;
+  title: string;
+  description: string;
+  category: string;
+}
+
+export interface StudentAdvisorResponse {
+  readiness_score: number;
+  readiness_badge: string;
+  summary: string;
+  top_strengths: string[];
+  critical_gaps: StudentCriticalGap[];
+  immediate_actions: StudentImmediateAction[];
+  recommended_roles: string[];
+  motivation: string;
+}

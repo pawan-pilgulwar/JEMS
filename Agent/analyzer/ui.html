@@ -649,6 +649,35 @@ page({group:'Judge0 (direct)', id:'judge0', title:'Judge0 submission', method:'P
   getBody:c=>{ const b={source_code:$('.f-code',c.form).value,language_id:+$('.f-lid',c.form).value,stdin:$('.f-stdin',c.form).value}; const e=$('.f-exp',c.form).value; if(e) b.expected_output=e; return b; },
   render:d=>runResult({status_id:d.status?.id,status:d.status?.description,stdout:d.stdout||'',stderr:d.stderr||'',compile_output:d.compile_output||'',time:d.time,memory:d.memory}) + (d.message?`<div class="box warn">${esc(d.message)}</div>`:'') + `<div class="hint">token ${esc(d.token)}</div>`});
 
+page({group:'Institution', id:'institution-insights', title:'Institution Placement Insights', method:'POST', path:'/agents/institution-insights',
+  desc:'Analyzes an institution’s student cohort metrics and skill gaps against real-time industry job market demand.',
+  slow:'Uses vLLM model; may take 15–30 s',
+  sample:{institution_name:'PES University',
+    cohort_summary:{total_students:120,avg_readiness:58,top_roles:['Full Stack Developer','Cloud Engineer'],top_verified_skills:['Java','React','SQL'],skill_gaps:[{skill:'Docker',coverage:12,gap:88},{skill:'AWS',coverage:8,gap:92}]},
+    market_demand:{top_skills:['Docker','AWS','React','Node.js','Java'],total_openings:24}}});
+
+page({group:'Academia', id:'curriculum-analysis', title:'Curriculum Modernization', method:'POST', path:'/agents/curriculum',
+  desc:'Compares an academic subject/syllabus against live industry hiring demands to modernize curriculum and design lab projects.',
+  slow:'Uses vLLM model; may take 15–30 s',
+  sample:{subject:'Web Technologies & Distributed Systems',
+    current_syllabus:['HTML4 basics','CSS float layouts','PHP5 procedural','Apache CGI','MySQL queries'],
+    target_role:'Full Stack Engineer',
+    market_demand_skills:['React','TypeScript','Node.js','Docker','REST APIs','PostgreSQL']}});
+
+page({group:'Industry', id:'job-skills', title:'Job Skill Extraction', method:'POST', path:'/agents/job-skills',
+  desc:'Extracts standardized technical skills and candidate evaluation guidance from a job description.',
+  sample:{role:'Backend Engineer Intern',
+    description:'We are seeking a Backend Engineer Intern to build microservices in Java/Spring Boot. Experience with SQL databases, Git, Docker, and RESTful APIs is required. Familiarity with AWS or Redis is a plus.'}});
+
+page({group:'Student', id:'student-advisor', title:'Career & Readiness Advisor', method:'POST', path:'/agents/student-advisor',
+  desc:'Generates personalized placement readiness evaluation, competitive strengths, critical skill gaps, and 1-2-3 next actions.',
+  sample:{student_name:'Alex Johnson', target_role:'Full Stack Developer',
+    verified_skills:['JavaScript','React','HTML/CSS'],
+    unverified_skills:['Node.js','TypeScript','PostgreSQL','Docker'],
+    resume_ats_score:78, interviews_completed:2, interviews_avg_score:72,
+    roadmaps_in_progress:['Node.js Microservices'],
+    market_demand_skills:['React','TypeScript','Node.js','PostgreSQL','Docker','AWS']}});
+
 // ---------------------------------------------------------------- boot
 (function boot(){
   const nav=$('#nav'), main=$('#main'); let g='';

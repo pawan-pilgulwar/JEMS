@@ -356,3 +356,228 @@ def match(body: MatchIn):
         "strengths": arr(STR), "gaps": arr(STR), "recommendation": STR},
         "required": ["strengths", "gaps", "recommendation"]}
     return call_agent("match", system, json.dumps(body.model_dump()), schema)
+
+
+# ---------- 6) INSTITUTION INSIGHTS AGENT (Placement & Cohort Curriculum Intelligence) ----------
+class InstitutionInsightsIn(BaseModel):
+    institution_name: str
+    cohort_summary: dict
+    market_demand: dict
+
+
+INSTITUTION_SYSTEM = (
+    "You are an executive Higher Education and Placement Intelligence Advisor. "
+    "Analyze an academic institution's student cohort metrics and skill gaps against real-time industry job market demand.\n"
+    "Identify critical curriculum bottlenecks, placement readiness risks, and provide actionable intervention plans "
+    "for the Dean of Academics and Training and Placement Officer (TPO)."
+)
+
+INSTITUTION_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "executive_summary": STR,
+        "cohort_health_rating": {"type": "string", "enum": ["Critical", "Needs Attention", "Moderate", "Strong"]},
+        "curriculum_bottlenecks": arr({
+            "type": "object",
+            "properties": {
+                "skill": STR,
+                "gap_severity": {"type": "string", "enum": ["High", "Medium", "Low"]},
+                "impact_on_placements": STR,
+                "recommended_action": STR,
+            },
+            "required": ["skill", "gap_severity", "impact_on_placements", "recommended_action"]
+        }),
+        "placement_risks": arr(STR),
+        "action_plan": arr({
+            "type": "object",
+            "properties": {
+                "priority": {"type": "string", "enum": ["Immediate (1-30 days)", "Medium-Term (1-3 months)", "Strategic (Next Semester)"]},
+                "area": STR,
+                "action": STR,
+                "expected_outcome": STR,
+            },
+            "required": ["priority", "area", "action", "expected_outcome"]
+        }),
+    },
+    "required": ["executive_summary", "cohort_health_rating", "curriculum_bottlenecks", "placement_risks", "action_plan"]
+}
+
+
+@app.post("/agents/institution-insights")
+def institution_insights(body: InstitutionInsightsIn):
+    user = (
+        f"Institution: {body.institution_name}\n"
+        f"Cohort Summary: {json.dumps(body.cohort_summary, indent=2)}\n"
+        f"Active Market Job Demand: {json.dumps(body.market_demand, indent=2)}"
+    )
+    return call_agent("institution", INSTITUTION_SYSTEM, user, INSTITUTION_SCHEMA, temperature=0.3)
+
+
+# ---------- 7) ACADEMIA CURRICULUM MODERNIZATION AGENT ----------
+class CurriculumAnalysisIn(BaseModel):
+    subject: str
+    current_syllabus: list[str] = []
+    target_role: str = ""
+    market_demand_skills: list[str] = []
+
+
+CURRICULUM_SYSTEM = (
+    "You are an academic curriculum modernization specialist and engineering faculty advisor. "
+    "Given a college course subject, its current syllabus topics, and live industry market skill demands, "
+    "evaluate syllabus alignment with the modern software engineering industry.\n"
+    "Identify outdated theoretical concepts that should be reduced, modern tools/frameworks that must be added, "
+    "and design practical hands-on lab projects to make students job-ready."
+)
+
+CURRICULUM_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "subject": STR,
+        "alignment_score": {"type": "integer"},
+        "summary": STR,
+        "outdated_topics": arr(STR),
+        "missing_industry_skills": arr(STR),
+        "modern_modules": arr({
+            "type": "object",
+            "properties": {
+                "module_title": STR,
+                "key_topics": arr(STR),
+                "industry_relevance": STR,
+            },
+            "required": ["module_title", "key_topics", "industry_relevance"]
+        }),
+        "practical_lab_projects": arr({
+            "type": "object",
+            "properties": {
+                "title": STR,
+                "description": STR,
+                "tools_used": arr(STR),
+            },
+            "required": ["title", "description", "tools_used"]
+        }),
+    },
+    "required": ["subject", "alignment_score", "summary", "outdated_topics", "missing_industry_skills", "modern_modules", "practical_lab_projects"]
+}
+
+
+@app.post("/agents/curriculum")
+def curriculum_analysis(body: CurriculumAnalysisIn):
+    user = (
+        f"Subject: {body.subject}\n"
+        f"Target Career Role: {body.target_role or 'Industry Standard'}\n"
+        f"Current Syllabus Topics: {', '.join(body.current_syllabus) if body.current_syllabus else 'Standard University Curriculum'}\n"
+        f"Live Industry In-Demand Skills: {', '.join(body.market_demand_skills)}"
+    )
+    return call_agent("curriculum", CURRICULUM_SYSTEM, user, CURRICULUM_SCHEMA, temperature=0.3)
+
+
+# ---------- 8) JOB SKILLS EXTRACTION AGENT (Industry) ----------
+class JobSkillsIn(BaseModel):
+    role: str
+    description: str
+
+
+JOB_SKILLS_SYSTEM = (
+    "You are a technical recruitment taxonomist and talent evaluator. "
+    "Given a job role title and description, extract standardized technical skills that match software engineering roadmaps.\n"
+    "Distinguish between mandatory core requirements and optional nice-to-have skills. "
+    "Assess candidate seniority level and provide recruitment screening suggestions."
+)
+
+JOB_SKILLS_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "role": STR,
+        "required_skills": arr(STR),
+        "nice_to_have_skills": arr(STR),
+        "experience_level": STR,
+        "screening_advice": STR,
+        "suggested_topics_to_test": arr(STR),
+    },
+    "required": ["role", "required_skills", "nice_to_have_skills", "experience_level", "screening_advice", "suggested_topics_to_test"]
+}
+
+
+@app.post("/agents/job-skills")
+def extract_job_skills(body: JobSkillsIn):
+    user = f"Role: {body.role}\nJob Description:\n{body.description}"
+    return call_agent("job_skills", JOB_SKILLS_SYSTEM, user, JOB_SKILLS_SCHEMA, temperature=0.2)
+
+
+# ---------- 9) STUDENT PLACEMENT & CAREER ADVISOR AGENT ----------
+class StudentAdvisorIn(BaseModel):
+    student_name: str = "Student"
+    target_role: str = ""
+    verified_skills: list[str] = []
+    unverified_skills: list[str] = []
+    resume_ats_score: int | None = None
+    interviews_completed: int = 0
+    interviews_avg_score: int = 0
+    roadmaps_in_progress: list[str] = []
+    market_demand_skills: list[str] = []
+
+
+STUDENT_ADVISOR_SYSTEM = (
+    "You are an elite Student Career & Placement Readiness Advisor for the JEMS platform. "
+    "Given a student's target role, verified skills, unverified skills, ATS resume score, "
+    "mock interview performance, active learning roadmaps, and currently active hiring demands in the industry, "
+    "deliver an actionable, high-impact placement readiness assessment.\n"
+    "Identify their greatest competitive strengths, diagnose critical skill gaps that would block them from job offers, "
+    "and provide a prioritized 1-2-3 action plan with clear immediate steps to maximize their placement odds."
+)
+
+STUDENT_ADVISOR_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "readiness_score": {"type": "integer"},
+        "readiness_badge": STR,
+        "summary": STR,
+        "top_strengths": arr(STR),
+        "critical_gaps": arr({
+            "type": "object",
+            "properties": {
+                "skill": STR,
+                "importance": STR,
+                "reason": STR,
+            },
+            "required": ["skill", "importance", "reason"]
+        }),
+        "immediate_actions": arr({
+            "type": "object",
+            "properties": {
+                "priority": {"type": "integer"},
+                "title": STR,
+                "description": STR,
+                "category": STR,
+            },
+            "required": ["priority", "title", "description", "category"]
+        }),
+        "recommended_roles": arr(STR),
+        "motivation": STR,
+    },
+    "required": [
+        "readiness_score",
+        "readiness_badge",
+        "summary",
+        "top_strengths",
+        "critical_gaps",
+        "immediate_actions",
+        "recommended_roles",
+        "motivation"
+    ]
+}
+
+
+@app.post("/agents/student-advisor")
+def student_advisor(body: StudentAdvisorIn):
+    user = (
+        f"Student Name: {body.student_name}\n"
+        f"Target Role: {body.target_role or 'Software Engineer'}\n"
+        f"Verified Skills: {', '.join(body.verified_skills) if body.verified_skills else 'None verified yet'}\n"
+        f"Unverified Skills: {', '.join(body.unverified_skills) if body.unverified_skills else 'None'}\n"
+        f"Resume ATS Score: {body.resume_ats_score if body.resume_ats_score is not None else 'No resume'}\n"
+        f"Mock Interviews: {body.interviews_completed} completed (Average Score: {body.interviews_avg_score}%)\n"
+        f"Active Roadmaps: {', '.join(body.roadmaps_in_progress) if body.roadmaps_in_progress else 'None'}\n"
+        f"Live Industry Demand Skills: {', '.join(body.market_demand_skills) if body.market_demand_skills else 'Standard tech stack'}"
+    )
+    return call_agent("student_advisor", STUDENT_ADVISOR_SYSTEM, user, STUDENT_ADVISOR_SCHEMA, temperature=0.3)

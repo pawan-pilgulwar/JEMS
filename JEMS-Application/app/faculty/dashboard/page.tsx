@@ -1,18 +1,20 @@
 import type { Metadata } from "next";
-import CollaborationBoard from "@/components/faculty/CollaborationBoard";
+import { redirect } from "next/navigation";
+import FacultyDashboard from "@/components/faculty/FacultyDashboard";
 import TourAutostart from "@/components/tour/TourAutostart";
 import { requireRole } from "@/lib/auth/require-role";
-import { listCollaborations } from "@/lib/db/collaborations";
+import { getFacultyDashboard } from "@/lib/db/faculty";
 
-export const metadata: Metadata = { title: "Faculty Collaboration — Jems" };
+export const metadata: Metadata = { title: "Academia Dashboard — Jems" };
 
 export default async function FacultyDashboardPage() {
   const session = await requireRole("faculty");
-  const items = await listCollaborations(session.user.id);
+  const data = await getFacultyDashboard(session.user.id);
+  if (!data) redirect("/login");
+
   return (
     <>
-      <CollaborationBoard items={items} who={session.user.name ?? "Faculty"} headline="Industry collaboration for academicians" />
-      {/* First visit: walk the academician through the portal once. */}
+      <FacultyDashboard initialData={data} />
       <TourAutostart tour="faculty" />
     </>
   );

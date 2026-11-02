@@ -39,6 +39,14 @@ import type {
   RunCodeResponse,
   SimpleAssessmentRequest,
   SimpleAssessmentResponse,
+  InstitutionInsightsRequest,
+  InstitutionInsightsResponse,
+  CurriculumRequest,
+  CurriculumResponse,
+  JobSkillsRequest,
+  JobSkillsResponse,
+  StudentAdvisorRequest,
+  StudentAdvisorResponse,
 } from "./types";
 
 const DEFAULT_TIMEOUT_MS = 300_000;
@@ -202,4 +210,16 @@ export const agent = {
     request<LearningLessonResponse>("POST", "/learning/lesson", body, { ...o, timeoutMs: learningTimeoutMs() }),
   learningNotes: (body: LearningNotesRequest, o?: CallOpts) =>
     request<LearningNotesResponse>("POST", "/learning/notes", body, { ...o, timeoutMs: learningTimeoutMs() }),
+
+  institutionInsights: (body: InstitutionInsightsRequest, o?: CallOpts) =>
+    request<InstitutionInsightsResponse>("POST", "/agents/institution-insights", body, o),
+
+  curriculum: (body: CurriculumRequest, o?: CallOpts) =>
+    request<CurriculumResponse>("POST", "/agents/curriculum", body, o),
+
+  jobSkills: (body: JobSkillsRequest, o?: CallOpts) =>
+    request<JobSkillsResponse>("POST", "/agents/job-skills", body, o),
+
+  studentAdvisor: (body: StudentAdvisorRequest, o?: CallOpts) =>
+    request<StudentAdvisorResponse>("POST", "/agents/student-advisor", body, o),
 };

@@ -26,8 +26,12 @@ AGENTS = {
     "assessment": (DEFAULT_URL, DEFAULT_MODEL),
     "coding":     (DEFAULT_URL, DEFAULT_MODEL),
     "grader":     (DEFAULT_URL, DEFAULT_MODEL),
-    "match":      (DEFAULT_URL, DEFAULT_MODEL),
-    "learning":   (DEFAULT_URL, DEFAULT_MODEL),
+    "match":       (DEFAULT_URL, DEFAULT_MODEL),
+    "learning":    (DEFAULT_URL, DEFAULT_MODEL),
+    "institution": (DEFAULT_URL, DEFAULT_MODEL),
+    "curriculum":  (DEFAULT_URL, DEFAULT_MODEL),
+    "job_skills":  (DEFAULT_URL, DEFAULT_MODEL),
+    "student_advisor": (DEFAULT_URL, DEFAULT_MODEL),
 }
 
 # Cached OpenAI client

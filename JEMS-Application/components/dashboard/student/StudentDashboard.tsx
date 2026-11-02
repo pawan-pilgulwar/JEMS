@@ -1,7 +1,9 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import {
+  AlertTriangle,
   ArrowUpRight,
   BadgeCheck,
   Briefcase,
@@ -10,8 +12,11 @@ import {
   ClipboardCheck,
   Code2,
   FileText,
+  LoaderCircle,
   type LucideIcon,
   Mic,
+  RefreshCw,
+  ShieldCheck,
   Sparkles,
   Target,
   TrendingUp,
@@ -22,6 +27,7 @@ import { useStudent } from "./StudentContext";
 import type { AiRoadmapSummary } from "@/lib/ai/roadmap";
 import type { PaperSummary } from "@/lib/ai/papers-shared";
 import type { DashboardData } from "@/lib/db/student-data";
+import type { StudentAdvisorResponse } from "@/lib/agent/types";
 
 /** AI Agent results and job actions, loaded next to `DashboardData` by the page. */
 export interface DashboardAiData {
@@ -169,7 +175,60 @@ function buildNextSteps(data: DashboardData, ai: DashboardAiData): NextStep[] {
   return steps.slice(0, 4);
 }
 
-export default function StudentDashboard({ data, ai }: { data: DashboardData; ai: DashboardAiData }) {
+export default function StudentDashboard({
+  data: initialData,
+  ai: initialAi,
+}: {
+  data: DashboardData;
+  ai: DashboardAiData;
+}) {
+  const [data, setData] = useState<DashboardData>(initialData);
+  const [ai, setAi] = useState<DashboardAiData>(initialAi);
+  const [refreshing, setRefreshing] = useState(false);
+  const [lastRefreshed, setLastRefreshed] = useState<Date>(new Date());
+
+  // AI Placement & Career Advisor
+  const [advisorReport, setAdvisorReport] = useState<StudentAdvisorResponse | null>(
+    initialData.latestAdvisorReport || null,
+  );
+  const [advising, setAdvising] = useState(false);
+  const [advisorError, setAdvisorError] = useState("");
+
+  const refreshLive = async () => {
+    setRefreshing(true);
+    try {
+      const res = await fetch("/api/student/dashboard");
+      if (res.ok) {
+        const json = await res.json();
+        if (json.data) setData(json.data);
+        if (json.ai) setAi(json.ai);
+        if (json.advisorReport) setAdvisorReport(json.advisorReport);
+        setLastRefreshed(new Date());
+      }
+    } catch (err) {
+      console.error("Live student dashboard refresh failed:", err);
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  const runAdvisor = async () => {
+    setAdvising(true);
+    setAdvisorError("");
+    try {
+      const res = await fetch("/api/student/ai/advisor", { method: "POST" });
+      const json = await res.json();
+      if (!res.ok || !json.report) {
+        throw new Error(json.error || "Failed to generate AI placement strategy.");
+      }
+      setAdvisorReport(json.report);
+    } catch (err) {
+      setAdvisorError(err instanceof Error ? err.message : "AI advisor is currently unavailable.");
+    } finally {
+      setAdvising(false);
+    }
+  };
+
   const student = useStudent();
   const subtitle = [student.title, student.location].filter(Boolean).join(" · ");
   const nextSteps = buildNextSteps(data, ai);
@@ -196,9 +255,12 @@ export default function StudentDashboard({ data, ai }: { data: DashboardData; ai
     {
       label: "Job Matches",
       value: String(data.newMatches),
-      sub: ai.applications || ai.saved
-        ? `${ai.applications} applied · ${ai.saved} saved`
-        : data.newMatches ? "View all matches" : "Complete profile",
+      sub:
+        ai.applications || ai.saved
+          ? `${ai.applications} applied · ${ai.saved} saved`
+          : data.newMatches
+            ? "View all matches"
+            : "Complete profile",
       trend: "neutral",
     },
   ] as const;
@@ -234,9 +296,10 @@ export default function StudentDashboard({ data, ai }: { data: DashboardData; ai
           Icon: ClipboardCheck,
           chip: "bg-slate/10 text-slate",
           title: "AI tests",
-          desc: ai.lastGraded?.percent != null
-            ? `Last: ${paperLabel(ai.lastGraded)} · ${ai.lastGraded.percent}%${ai.lastGraded.passed ? " · passed" : ""}`
-            : "Verify a skill with an AI-written test",
+          desc:
+            ai.lastGraded?.percent != null
+              ? `Last: ${paperLabel(ai.lastGraded)} · ${ai.lastGraded.percent}%${ai.lastGraded.passed ? " · passed" : ""}`
+              : "Verify a skill with an AI-written test",
           action: "New test",
           href: "/student/assessment",
         },
@@ -244,9 +307,10 @@ export default function StudentDashboard({ data, ai }: { data: DashboardData; ai
       Icon: Code2,
       chip: "bg-emerald/10 text-emerald",
       title: "Coding profile",
-      desc: ai.codingSkills === null
-        ? "Not analysed — connect GitHub or LeetCode"
-        : `${ai.codingSkills} skill${ai.codingSkills === 1 ? "" : "s"} proven by your code${ai.codingAnalyzedAt ? ` · updated ${ai.codingAnalyzedAt}` : ""}`,
+      desc:
+        ai.codingSkills === null
+          ? "Not analysed — connect GitHub or LeetCode"
+          : `${ai.codingSkills} skill${ai.codingSkills === 1 ? "" : "s"} proven by your code${ai.codingAnalyzedAt ? ` · updated ${ai.codingAnalyzedAt}` : ""}`,
       action: ai.codingSkills === null ? "Analyse" : "View",
       href: "/student/analysis",
     },
@@ -263,14 +327,29 @@ export default function StudentDashboard({ data, ai }: { data: DashboardData; ai
             </h1>
             {subtitle && <p className="mt-1 text-sm text-mediumgray">{subtitle}</p>}
           </div>
-          <Link
-            href="/student/roadmap"
-            data-tour="dashboard-roadmap"
-            className="group inline-flex items-center justify-center gap-1.5 self-start rounded-lg bg-navy px-4 py-2.5 text-sm font-semibold text-white transition-colors duration-200 hover:bg-[#1f2937] sm:self-auto"
-          >
-            Open my roadmap
-            <ArrowUpRight className="h-4 w-4 transition-transform duration-200 group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
-          </Link>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={refreshLive}
+              disabled={refreshing}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-navy/15 bg-white px-3 py-2 text-xs font-semibold text-navy shadow-xs transition hover:bg-surface disabled:opacity-50"
+              title="Fetch latest verified skills, test results, and live job postings from database"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin text-orange" : "text-slate"}`} />
+              {refreshing ? "Syncing..." : "Live Refresh"}
+              <span className="ml-1 text-[10px] font-normal text-mediumgray">
+                ({lastRefreshed.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })})
+              </span>
+            </button>
+            <Link
+              href="/student/roadmap"
+              data-tour="dashboard-roadmap"
+              className="group inline-flex items-center justify-center gap-1.5 rounded-lg bg-navy px-4 py-2 text-sm font-semibold text-white transition-colors duration-200 hover:bg-[#1f2937]"
+            >
+              Open my roadmap
+              <ArrowUpRight className="h-4 w-4 transition-transform duration-200 group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
+            </Link>
+          </div>
         </div>
 
         {/* Stat tiles */}
@@ -285,7 +364,9 @@ export default function StudentDashboard({ data, ai }: { data: DashboardData; ai
                     <meta.Icon className="h-4 w-4" />
                   </span>
                 </div>
-                <p className="font-display mt-3 text-[1.75rem] font-bold leading-none tracking-tight text-navy tabular">{s.value}</p>
+                <p className="font-display mt-3 text-[1.75rem] font-bold leading-none tracking-tight text-navy tabular">
+                  {s.value}
+                </p>
                 <p
                   className={`mt-1 inline-flex items-center gap-1 text-xs font-medium ${
                     s.trend === "up" ? "text-emerald" : "text-mediumgray"
@@ -298,6 +379,143 @@ export default function StudentDashboard({ data, ai }: { data: DashboardData; ai
             );
           })}
         </div>
+
+        {/* AI Career & Placement Advisor Banner */}
+        <Card className="overflow-hidden border-orange/20 shadow-xs">
+          <div className="flex flex-col gap-3 border-b border-navy/[0.06] bg-gradient-to-r from-orange/5 via-surface to-white px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-3">
+              <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-orange/15 text-orange">
+                <Sparkles className="h-4 w-4" />
+              </span>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h2 className="text-sm font-bold text-navy">AI Placement & Career Advisor</h2>
+                  {advisorReport?.readiness_badge && (
+                    <span className="rounded-full bg-emerald/10 px-2 py-0.5 text-[10px] font-bold text-emerald">
+                      {advisorReport.readiness_badge}
+                    </span>
+                  )}
+                </div>
+                <p className="text-[11px] text-mediumgray">
+                  Real-time placement intelligence analyzing your verified skills against active industry job openings
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={runAdvisor}
+              disabled={advising}
+              className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-navy px-3.5 py-1.5 text-xs font-semibold text-white transition-all hover:bg-slate disabled:opacity-50"
+            >
+              {advising ? (
+                <>
+                  <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+                  Analyzing with AI...
+                </>
+              ) : advisorReport ? (
+                <>
+                  <Sparkles className="h-3.5 w-3.5 text-orange" />
+                  Re-evaluate Strategy
+                </>
+              ) : (
+                <>
+                  <Sparkles className="h-3.5 w-3.5 text-orange" />
+                  Get AI Career Advice
+                </>
+              )}
+            </button>
+          </div>
+
+          {advisorError && (
+            <div className="mx-5 mt-4 flex items-center gap-2 rounded-lg bg-red-50 p-3 text-xs text-red-700">
+              <AlertTriangle className="h-4 w-4 shrink-0" />
+              <span>{advisorError}</span>
+            </div>
+          )}
+
+          {!advisorReport && !advising && (
+            <div className="px-5 py-6 text-center">
+              <p className="text-xs text-mediumgray">
+                Click <strong>Get AI Career Advice</strong> to analyze your skills, test scores, and ATS resume against
+                current hiring trends to generate a personalized placement roadmap.
+              </p>
+            </div>
+          )}
+
+          {advisorReport && (
+            <div className="space-y-4 p-5">
+              <p className="text-xs leading-relaxed text-navy">{advisorReport.summary}</p>
+
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                {/* Top Strengths */}
+                <div className="rounded-lg border border-navy/[0.06] bg-surface/50 p-3.5">
+                  <div className="flex items-center gap-1.5 text-xs font-semibold text-navy">
+                    <ShieldCheck className="h-4 w-4 text-emerald" />
+                    <span>Competitive Strengths</span>
+                  </div>
+                  <ul className="mt-2 space-y-1.5">
+                    {advisorReport.top_strengths.map((str, idx) => (
+                      <li key={idx} className="flex items-start gap-1.5 text-xs text-mediumgray">
+                        <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-emerald" />
+                        <span>{str}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+
+                {/* Critical Gaps */}
+                <div className="rounded-lg border border-navy/[0.06] bg-surface/50 p-3.5">
+                  <div className="flex items-center gap-1.5 text-xs font-semibold text-navy">
+                    <AlertTriangle className="h-4 w-4 text-orange" />
+                    <span>Critical Skill Gaps for Open Jobs</span>
+                  </div>
+                  <ul className="mt-2 space-y-1.5">
+                    {advisorReport.critical_gaps.map((gap, idx) => (
+                      <li key={idx} className="text-xs text-mediumgray">
+                        <div className="font-medium text-navy">
+                          {gap.skill}{" "}
+                          <span
+                            className={`text-[10px] font-semibold ${gap.importance === "High" ? "text-orange" : "text-slate"}`}
+                          >
+                            ({gap.importance} priority)
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-mediumgray">{gap.reason}</p>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+
+              {/* Immediate 1-2-3 Actions */}
+              <div>
+                <h3 className="text-xs font-semibold text-navy">Prioritized Action Plan</h3>
+                <div className="mt-2 grid grid-cols-1 gap-2.5 sm:grid-cols-3">
+                  {advisorReport.immediate_actions.map((act) => (
+                    <div key={act.priority} className="rounded-lg border border-navy/[0.06] bg-white p-3 shadow-xs">
+                      <div className="flex items-center justify-between">
+                        <span className="flex h-5 w-5 items-center justify-center rounded-full bg-navy text-[10px] font-bold text-white">
+                          {act.priority}
+                        </span>
+                        <span className="rounded-md bg-surface px-1.5 py-0.5 text-[9px] font-semibold text-slate">
+                          {act.category}
+                        </span>
+                      </div>
+                      <p className="mt-2 text-xs font-semibold text-navy">{act.title}</p>
+                      <p className="mt-1 text-[11px] leading-tight text-mediumgray">{act.description}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {advisorReport.motivation && (
+                <div className="rounded-md border border-navy/[0.06] bg-surface/30 px-3 py-2 text-center text-[11px] italic text-mediumgray">
+                  &ldquo;{advisorReport.motivation}&rdquo;
+                </div>
+              )}
+            </div>
+          )}
+        </Card>
 
         {/* Main grid */}
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
@@ -319,10 +537,7 @@ export default function StudentDashboard({ data, ai }: { data: DashboardData; ai
                         <p className="mt-0.5 text-xs text-mediumgray">{step.desc}</p>
                         {typeof step.progress === "number" && (
                           <div className="mt-2 h-1.5 w-full max-w-xs overflow-hidden rounded-full bg-lightgray">
-                            <div
-                              className="h-full rounded-full bg-slate"
-                              style={{ width: `${step.progress}%` }}
-                            />
+                            <div className="h-full rounded-full bg-slate" style={{ width: `${step.progress}%` }} />
                           </div>
                         )}
                       </div>
@@ -373,25 +588,28 @@ export default function StudentDashboard({ data, ai }: { data: DashboardData; ai
                 <ul className="divide-y divide-navy/[0.06]">
                   {data.jobs.map((job) => (
                     <li key={job.id}>
-                      <Link href="/student/jobs" className="flex items-center gap-4 px-5 py-4 transition-colors hover:bg-surface-2">
-                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-surface text-sm font-bold text-navy">
-                        {job.company.charAt(0)}
-                      </span>
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-semibold text-navy">{job.role}</p>
-                        <p className="mt-0.5 truncate text-xs text-mediumgray">
-                          {job.company} · {job.location} · {job.salary}
-                        </p>
-                      </div>
-                      <span
-                        className={`hidden shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold tabular sm:inline-block ${matchTone(job.match)}`}
+                      <Link
+                        href="/student/jobs"
+                        className="flex items-center gap-4 px-5 py-4 transition-colors hover:bg-surface-2"
                       >
-                        {job.match}% match
-                      </span>
-                      <span className="hidden w-16 shrink-0 text-right text-xs text-mediumgray md:block">
-                        {job.posted}
-                      </span>
-                      <ChevronRight className="h-4 w-4 shrink-0 text-mediumgray" />
+                        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-surface text-sm font-bold text-navy">
+                          {job.company.charAt(0)}
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-semibold text-navy">{job.role}</p>
+                          <p className="mt-0.5 truncate text-xs text-mediumgray">
+                            {job.company} · {job.location} · {job.salary}
+                          </p>
+                        </div>
+                        <span
+                          className={`hidden shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold tabular sm:inline-block ${matchTone(job.match)}`}
+                        >
+                          {job.match}% match
+                        </span>
+                        <span className="hidden w-16 shrink-0 text-right text-xs text-mediumgray md:block">
+                          {job.posted}
+                        </span>
+                        <ChevronRight className="h-4 w-4 shrink-0 text-mediumgray" />
                       </Link>
                     </li>
                   ))}
@@ -409,14 +627,10 @@ export default function StudentDashboard({ data, ai }: { data: DashboardData; ai
                 <span className="text-sm font-bold text-orange tabular">{data.readiness}%</span>
               </div>
               <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-lightgray">
-                <div
-                  className="h-full rounded-full bg-slate"
-                  style={{ width: `${data.readiness}%` }}
-                />
+                <div className="h-full rounded-full bg-slate" style={{ width: `${data.readiness}%` }} />
               </div>
               <p className="mt-3 text-xs text-mediumgray">
-                Complete your resume and add skills to reach 100% and unlock
-                priority matching.
+                Complete your resume and add skills to reach 100% and unlock priority matching.
               </p>
             </Card>
 
@@ -424,9 +638,7 @@ export default function StudentDashboard({ data, ai }: { data: DashboardData; ai
             <Card data-tour="dashboard-upcoming">
               <SectionHead title="Upcoming" />
               {data.upcoming.length === 0 ? (
-                <p className="px-5 py-6 text-center text-xs text-mediumgray">
-                  Nothing scheduled yet.
-                </p>
+                <p className="px-5 py-6 text-center text-xs text-mediumgray">Nothing scheduled yet.</p>
               ) : (
                 <ul className="divide-y divide-navy/[0.06]">
                   {data.upcoming.map((item) => (
@@ -462,17 +674,12 @@ export default function StudentDashboard({ data, ai }: { data: DashboardData; ai
                       <div className="mb-1 flex items-center justify-between text-xs">
                         <span className="inline-flex items-center gap-1 font-medium text-navy">
                           {skill.name}
-                          {skill.verified && (
-                            <BadgeCheck className="h-3.5 w-3.5 text-emerald" aria-label="Verified" />
-                          )}
+                          {skill.verified && <BadgeCheck className="h-3.5 w-3.5 text-emerald" aria-label="Verified" />}
                         </span>
                         <span className="text-mediumgray tabular">{skill.level}%</span>
                       </div>
                       <div className="h-1.5 w-full overflow-hidden rounded-full bg-lightgray">
-                        <div
-                          className="h-full rounded-full bg-navy"
-                          style={{ width: `${skill.level}%` }}
-                        />
+                        <div className="h-full rounded-full bg-navy" style={{ width: `${skill.level}%` }} />
                       </div>
                     </li>
                   ))}
@@ -484,9 +691,7 @@ export default function StudentDashboard({ data, ai }: { data: DashboardData; ai
             <Card data-tour="dashboard-activity">
               <SectionHead title="Recent activity" />
               {data.activity.length === 0 ? (
-                <p className="px-5 py-6 text-center text-xs text-mediumgray">
-                  Your recent activity will appear here.
-                </p>
+                <p className="px-5 py-6 text-center text-xs text-mediumgray">Your recent activity will appear here.</p>
               ) : (
                 <ul className="px-5 py-2">
                   {data.activity.map((a, i) => (

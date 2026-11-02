@@ -23,6 +23,10 @@ This guide explains every API in your `analyzer` service: the five AI agents, th
 | `POST /agents/roadmap` | Prerequisites + target skill to a detailed syllabus | yes | no |
 | `POST /agents/assessment` | Simple MCQ questions only (older endpoint) | yes | no |
 | `POST /agents/match` | Explain why a student fits a company | yes | no |
+| `POST /agents/institution-insights` | Institution cohort skill gap & placement readiness intelligence | yes | no |
+| `POST /agents/curriculum` | Academia curriculum modernization against live industry demand | yes | no |
+| `POST /agents/job-skills` | Industry job description skill extraction & screening advice | yes | no |
+| `POST /agents/student-advisor` | Student placement readiness assessment & prioritized action plan | yes | no |
 | `POST /learning/path` | Roadmap to a personal learning path (modules of lessons) | yes (vLLM) | no |
 | `POST /learning/lesson` | Narrated video lesson + quick check + YouTube videos for one topic | yes (vLLM) | no |
 | `POST /learning/notes` | Revision notes for one topic | yes (vLLM) | no |

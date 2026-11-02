@@ -1,12 +1,33 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
-import { ArrowRight, Briefcase, GraduationCap, Handshake, Plus, TrendingUp, Users } from "lucide-react";
+import { ArrowRight, Briefcase, GraduationCap, Handshake, Plus, RefreshCw, TrendingUp, Users } from "lucide-react";
 import { Card } from "@/components/dashboard/student/ui";
 import type { CompanyDashboard as Data } from "@/lib/db/company";
 import { PageHead, STATUS_STYLE, TYPE_STYLE, fmtDate, primaryBtn } from "./ui";
 
-export default function CompanyDashboard({ data }: { data: Data }) {
+export default function CompanyDashboard({ data: initialData }: { data: Data }) {
+  const [data, setData] = useState<Data>(initialData);
+  const [refreshing, setRefreshing] = useState(false);
+  const [lastRefreshed, setLastRefreshed] = useState<Date>(new Date());
+
+  const refreshLive = async () => {
+    setRefreshing(true);
+    try {
+      const res = await fetch("/api/company/dashboard");
+      if (res.ok) {
+        const fresh = (await res.json()) as Data;
+        setData(fresh);
+        setLastRefreshed(new Date());
+      }
+    } catch (err) {
+      console.error("Live dashboard refresh failed:", err);
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
   const k = data.kpis;
   const tiles = [
     { label: "Open jobs / internships", value: k.openings, sub: "internships, apprenticeships & jobs", icon: Briefcase },
@@ -21,13 +42,35 @@ export default function CompanyDashboard({ data }: { data: Data }) {
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <PageHead company={data.company.name} title="Industry portal" hint="Post jobs and internships with the skills you need, get skill-ranked candidates, and publish programs that close the gap." />
-        <Link href="/company/opportunities?new=1" data-tour="company-post" className={primaryBtn}><Plus className="h-4 w-4" /> Post a job / internship</Link>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={refreshLive}
+            disabled={refreshing}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-lightgray bg-white px-3 py-2 text-xs font-semibold text-navy shadow-sm transition hover:bg-surface disabled:opacity-50"
+            title="Fetch real-time dynamic applicants and pipeline updates from database"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin text-orange" : "text-slate"}`} />
+            {refreshing ? "Syncing..." : "Live Refresh"}
+            <span className="ml-1 text-[10px] font-normal text-mediumgray">
+              ({lastRefreshed.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })})
+            </span>
+          </button>
+          <Link href="/company/opportunities?new=1" data-tour="company-post" className={primaryBtn}>
+            <Plus className="h-4 w-4" /> Post a job / internship
+          </Link>
+        </div>
       </div>
 
       <div data-tour="company-kpis" className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
         {tiles.map((t) => (
           <Card key={t.label} className="p-5">
-            <div className="flex items-start justify-between"><p className="text-xs font-medium text-mediumgray">{t.label}</p><span className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate/10 text-slate"><t.icon className="h-4 w-4" /></span></div>
+            <div className="flex items-start justify-between">
+              <p className="text-xs font-medium text-mediumgray">{t.label}</p>
+              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate/10 text-slate">
+                <t.icon className="h-4 w-4" />
+              </span>
+            </div>
             <p className="font-display mt-3 text-[1.75rem] font-bold leading-none tracking-tight text-navy tabular">{t.value}</p>
             <p className="mt-1 text-xs text-mediumgray">{t.sub}</p>
           </Card>
@@ -38,7 +81,9 @@ export default function CompanyDashboard({ data }: { data: Data }) {
         <Card data-tour="company-applicants" className="xl:col-span-2">
           <div className="flex items-center justify-between border-b border-lightgray px-5 py-3.5">
             <h2 className="text-sm font-semibold text-navy">Recent applicants</h2>
-            <Link href="/company/candidates" className="inline-flex items-center gap-1 text-xs font-semibold text-slate hover:underline">All candidates <ArrowRight className="h-3.5 w-3.5" /></Link>
+            <Link href="/company/candidates" className="inline-flex items-center gap-1 text-xs font-semibold text-slate hover:underline">
+              All candidates <ArrowRight className="h-3.5 w-3.5" />
+            </Link>
           </div>
           <ul className="divide-y divide-lightgray">
             {data.recentApplicants.length === 0 && <li className="px-5 py-6 text-sm text-mediumgray">No applications yet.</li>}
@@ -63,8 +108,13 @@ export default function CompanyDashboard({ data }: { data: Data }) {
               {data.pipeline.length === 0 && <li className="text-sm text-mediumgray">No applications yet.</li>}
               {data.pipeline.map((p) => (
                 <li key={p.status} title={`${p.status}: ${p.count}`}>
-                  <div className="mb-1 flex justify-between text-xs"><span className="font-medium text-navy">{p.status}</span><span className="tabular-nums text-mediumgray">{p.count}</span></div>
-                  <div className="h-2 w-full overflow-hidden rounded-full bg-lightgray"><div className="h-full rounded-r-[4px] bg-slate" style={{ width: `${(p.count / pipelineMax) * 100}%` }} /></div>
+                  <div className="mb-1 flex justify-between text-xs">
+                    <span className="font-medium text-navy">{p.status}</span>
+                    <span className="tabular-nums text-mediumgray">{p.count}</span>
+                  </div>
+                  <div className="h-2 w-full overflow-hidden rounded-full bg-lightgray">
+                    <div className="h-full rounded-r-[4px] bg-slate" style={{ width: `${(p.count / pipelineMax) * 100}%` }} />
+                  </div>
                 </li>
               ))}
             </ul>
@@ -72,7 +122,11 @@ export default function CompanyDashboard({ data }: { data: Data }) {
           <Card data-tour="company-skills" className="p-5">
             <h2 className="text-sm font-semibold text-navy">Skills you&apos;re hiring for</h2>
             <div className="mt-3 flex flex-wrap gap-1.5">
-              {data.topDemand.map((d) => <span key={d.skill} className="rounded-md bg-surface px-2 py-0.5 text-xs font-medium text-navy">{d.skill} <span className="text-[10px] text-mediumgray">×{d.openings}</span></span>)}
+              {data.topDemand.map((d) => (
+                <span key={d.skill} className="rounded-md bg-surface px-2 py-0.5 text-xs font-medium text-navy">
+                  {d.skill} <span className="text-[10px] text-mediumgray">×{d.openings}</span>
+                </span>
+              ))}
             </div>
           </Card>
         </div>
@@ -81,17 +135,24 @@ export default function CompanyDashboard({ data }: { data: Data }) {
       <Card data-tour="company-openings">
         <div className="flex items-center justify-between border-b border-lightgray px-5 py-3.5">
           <h2 className="text-sm font-semibold text-navy">Your openings</h2>
-          <Link href="/company/opportunities" className="inline-flex items-center gap-1 text-xs font-semibold text-slate hover:underline">Manage <ArrowRight className="h-3.5 w-3.5" /></Link>
+          <Link href="/company/opportunities" className="inline-flex items-center gap-1 text-xs font-semibold text-slate hover:underline">
+            Manage <ArrowRight className="h-3.5 w-3.5" />
+          </Link>
         </div>
         <ul className="divide-y divide-lightgray">
           {data.openings.slice(0, 6).map((o) => (
             <li key={o.id} className="flex flex-wrap items-center gap-3 px-5 py-3">
               <span className="min-w-0 flex-1">
-                <span className="flex flex-wrap items-center gap-2"><span className="text-sm font-medium text-navy">{o.role}</span><span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${TYPE_STYLE(o.type)}`}>{o.type}</span></span>
+                <span className="flex flex-wrap items-center gap-2">
+                  <span className="text-sm font-medium text-navy">{o.role}</span>
+                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${TYPE_STYLE(o.type)}`}>{o.type}</span>
+                </span>
                 <span className="text-[11px] text-mediumgray">{o.location} · {o.requiredSkills.slice(0, 4).join(", ")}</span>
               </span>
               <span className="text-xs text-mediumgray">{o.applicants} applicants</span>
-              <Link href={`/company/candidates?job=${o.id}`} className="text-xs font-semibold text-slate hover:underline">Shortlist</Link>
+              <Link href={`/company/candidates?job=${o.id}`} className="text-xs font-semibold text-slate hover:underline">
+                Shortlist
+              </Link>
             </li>
           ))}
         </ul>
