@@ -12,6 +12,7 @@
 | Variable | Purpose |
 |---|---|
 | `MONGODB_URI` | MongoDB connection string |
+| `MONGODB_DB` | MongoDB database name (defaults to `jems_production`) |
 | `REDIS_URL` | Redis connection string |
 | `AUTH_URL` | Canonical app URL (`http://localhost:3000` in dev). The GitHub OAuth App's callback URL must be exactly `<AUTH_URL>/api/auth/callback/github` |
 | `AUTH_SECRET` | NextAuth secret; also used to HMAC-hash OTP codes |

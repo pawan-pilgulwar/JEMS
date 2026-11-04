@@ -1,5 +1,7 @@
 const { MongoClient } = require('mongodb');
 
+const DB_NAME = process.env.MONGODB_DB || 'jems_production';
+
 async function testConnection() {
   if (!process.env.MONGODB_URI) {
     console.error('✗ MONGODB_URI not set in .env.local');
@@ -15,7 +17,7 @@ async function testConnection() {
     await client.connect();
     console.log('✓ Connected to MongoDB');
 
-    const db = client.db('jems_production');
+    const db = client.db(DB_NAME);
 
     // Test ping
     // const admin = db.admin();

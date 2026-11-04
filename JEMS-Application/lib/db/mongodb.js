@@ -2,7 +2,7 @@ import { MongoClient } from 'mongodb';
 import { ensureSrvDns } from './dns-fallback.cjs';
 
 const MONGODB_URI = process.env.MONGODB_URI;
-const MONGODB_DB = 'jems_production';
+const MONGODB_DB = process.env.MONGODB_DB || 'jems_production';
 
 if (!MONGODB_URI) {
   throw new Error('Missing MONGODB_URI in environment variables');

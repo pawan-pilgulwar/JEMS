@@ -217,6 +217,14 @@ export default function StudentDashboard({
     setAdvisorError("");
     try {
       const res = await fetch("/api/student/ai/advisor", { method: "POST" });
+      const contentType = res.headers.get("content-type") || "";
+      if (!contentType.includes("application/json")) {
+        throw new Error(
+          res.status === 404
+            ? "Advisor service endpoint not found."
+            : `Advisor server response error (${res.status}). Please ensure the AI Agent is running on port 8080.`,
+        );
+      }
       const json = await res.json();
       if (!res.ok || !json.report) {
         throw new Error(json.error || "Failed to generate AI placement strategy.");

@@ -1,7 +1,7 @@
 const { MongoClient } = require('mongodb');
 
 const MONGODB_URI = process.env.MONGODB_URI;
-const DB_NAME = 'jems_production';
+const DB_NAME = process.env.MONGODB_DB || 'jems_production';
 
 async function setupDatabase() {
   if (!MONGODB_URI) {

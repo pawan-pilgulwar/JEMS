@@ -1,6 +1,7 @@
 # Database
 
-MongoDB database name: `jems_production` (see `scripts/setupDatabase.js`).
+MongoDB database name is set by `MONGODB_DB` (defaults to `jems_production`).
+The app and database scripts use the same setting.
 
 ## Collections & indexes
 

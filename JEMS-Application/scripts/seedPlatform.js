@@ -17,6 +17,7 @@ const { MongoClient } = require("mongodb");
 const { randomBytes, scryptSync } = require("crypto");
 
 const uri = process.env.MONGODB_URI;
+const DB_NAME = process.env.MONGODB_DB || "jems_production";
 if (!uri) {
   console.error("✗ MONGODB_URI is not set");
   process.exit(1);
@@ -53,7 +54,7 @@ async function seed() {
     // Works around Node DNS servers that refuse SRV lookups (see lib/db/dns-fallback.cjs).
     await require("../lib/db/dns-fallback.cjs").ensureSrvDns(process.env.MONGODB_URI);
     await client.connect();
-    const db = client.db("jems_production");
+    const db = client.db(DB_NAME);
     const now = new Date();
 
     // ── Wipe previous platform seed ──────────────────────────────

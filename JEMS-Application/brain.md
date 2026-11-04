@@ -39,7 +39,7 @@ Recent commit history (newest first): `ui changes` → `some cahnges` →
 `password recovery` → `sb created` → `sb created` → initial Next.js
 scaffold commits. No PRs/branches — everything lands on `main` directly.
 
-## Data model (MongoDB, db `jems_production`)
+## Data model (MongoDB, database set by `MONGODB_DB`; defaults to `jems_production`)
 
 Core collections: `users`, `studentProfiles`, `companyProfiles`, `resumes`,
 `jobPostings`, `jobApplications`, `savedJobs`, `candidateMatches`,
@@ -165,7 +165,7 @@ These patterns are deliberate — keep them when touching this code:
 
 ## Environment variables (`.env.local`)
 
-`MONGODB_URI`, `REDIS_URL`, `AUTH_SECRET`, `SMTP_HOST`, `SMTP_PORT`,
+`MONGODB_URI`, `MONGODB_DB`, `REDIS_URL`, `AUTH_SECRET`, `SMTP_HOST`, `SMTP_PORT`,
 `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`. Full detail →
 [`docs/SETUP.md`](./docs/SETUP.md).
 

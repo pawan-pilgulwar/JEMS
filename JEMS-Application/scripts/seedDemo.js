@@ -13,7 +13,7 @@ const { MongoClient, ObjectId } = require("mongodb");
 const { randomBytes, scryptSync } = require("crypto");
 
 const MONGODB_URI = process.env.MONGODB_URI;
-const DB_NAME = "jems_production";
+const DB_NAME = process.env.MONGODB_DB || "jems_production";
 
 const DEMO_EMAIL = "demo@jems.dev";
 const DEMO_PASSWORD = "Demo@1234";
