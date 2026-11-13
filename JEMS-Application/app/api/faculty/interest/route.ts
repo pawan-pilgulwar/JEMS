@@ -21,6 +21,6 @@ export async function POST(request: Request) {
   if (!collaborationId) return NextResponse.json({ error: "collaborationId is required." }, { status: 400 });
 
   const res = await toggleInterest(userId, collaborationId);
-  if (!res.ok) return NextResponse.json({ error: "Collaboration not found." }, { status: 404 });
+  if (!res.ok) return NextResponse.json({ error: res.error ?? "Collaboration not found." }, { status: res.error ? 409 : 404 });
   return NextResponse.json(res);
 }

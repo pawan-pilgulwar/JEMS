@@ -11,6 +11,7 @@ import {
   type LearningNotesResponse,
   type LearningPathResponse,
   type LearningStyle,
+  type LessonVideos,
   type PlanLesson,
   type PlanModule,
   type RoadmapStep,
@@ -359,6 +360,128 @@ async function store(db: Db, key: string, kind: string, step: RoadmapStep, topic
   );
 }
 
+// ── Smart Resource & Video DB Cache ────────────────────────────
+
+const CURATED_RESOURCES: Record<string, LessonVideos> = {
+  react: {
+    query: "React JS Tutorial",
+    search_url: "https://www.youtube.com/results?search_query=React+JS+Tutorial",
+    videos: [
+      { video_id: "w7ejDZ8SWv8", title: "React JS Crash Course 2024", channel: "Traversy Media", url: "https://www.youtube.com/watch?v=w7ejDZ8SWv8" },
+      { video_id: "SqcY0GlETPk", title: "React Tutorial for Beginners", channel: "Programming with Mosh", url: "https://www.youtube.com/watch?v=SqcY0GlETPk" },
+    ],
+  },
+  javascript: {
+    query: "JavaScript Tutorial for Beginners",
+    search_url: "https://www.youtube.com/results?search_query=JavaScript+Tutorial",
+    videos: [
+      { video_id: "jS4aFq5-91M", title: "JavaScript Programming - Full Course", channel: "freeCodeCamp", url: "https://www.youtube.com/watch?v=jS4aFq5-91M" },
+      { video_id: "W6NZfCO5SIk", title: "JavaScript Tutorial for Beginners: 30 Mins", channel: "Programming with Mosh", url: "https://www.youtube.com/watch?v=W6NZfCO5SIk" },
+    ],
+  },
+  typescript: {
+    query: "TypeScript Full Course",
+    search_url: "https://www.youtube.com/results?search_query=TypeScript+Tutorial",
+    videos: [
+      { video_id: "d56mG7DezGs", title: "TypeScript Tutorial for Beginners", channel: "Programming with Mosh", url: "https://www.youtube.com/watch?v=d56mG7DezGs" },
+      { video_id: "BwuLxPH8IDs", title: "TypeScript Full Course for Beginners", channel: "freeCodeCamp", url: "https://www.youtube.com/watch?v=BwuLxPH8IDs" },
+    ],
+  },
+  python: {
+    query: "Python Tutorial",
+    search_url: "https://www.youtube.com/results?search_query=Python+Tutorial",
+    videos: [
+      { video_id: "_uQrJ0TkZlc", title: "Python Tutorial for Beginners - Full Course", channel: "Programming with Mosh", url: "https://www.youtube.com/watch?v=_uQrJ0TkZlc" },
+      { video_id: "rfscVS0vtbw", title: "Python for Beginners - Full Course", channel: "freeCodeCamp", url: "https://www.youtube.com/watch?v=rfscVS0vtbw" },
+    ],
+  },
+  node: {
+    query: "Node.js Tutorial",
+    search_url: "https://www.youtube.com/results?search_query=Node.js+Tutorial",
+    videos: [
+      { video_id: "Oe421EPjeBE", title: "Node.js and Express.js - Full Course", channel: "freeCodeCamp", url: "https://www.youtube.com/watch?v=Oe421EPjeBE" },
+      { video_id: "TlB_eWDSMt4", title: "Node.js Tutorial for Beginners: Learn Node in 1 Hour", channel: "Programming with Mosh", url: "https://www.youtube.com/watch?v=TlB_eWDSMt4" },
+    ],
+  },
+  next: {
+    query: "Next.js Full Course",
+    search_url: "https://www.youtube.com/results?search_query=Next.js+Tutorial",
+    videos: [
+      { video_id: "wm5gMKuwSYk", title: "Next.js 14 Full Course 2024", channel: "JavaScript Mastery", url: "https://www.youtube.com/watch?v=wm5gMKuwSYk" },
+    ],
+  },
+  docker: {
+    query: "Docker Tutorial",
+    search_url: "https://www.youtube.com/results?search_query=Docker+Tutorial",
+    videos: [
+      { video_id: "pg19Z8LL06w", title: "Docker Tutorial for Beginners", channel: "TechWorld with Nana", url: "https://www.youtube.com/watch?v=pg19Z8LL06w" },
+    ],
+  },
+  sql: {
+    query: "SQL Database Course",
+    search_url: "https://www.youtube.com/results?search_query=SQL+Tutorial",
+    videos: [
+      { video_id: "HXV3zeRR3h4", title: "SQL Tutorial - Full Database Course for Beginners", channel: "freeCodeCamp", url: "https://www.youtube.com/watch?v=HXV3zeRR3h4" },
+    ],
+  },
+  git: {
+    query: "Git and GitHub Tutorial",
+    search_url: "https://www.youtube.com/results?search_query=Git+Tutorial",
+    videos: [
+      { video_id: "RGOj5yH7evk", title: "Git and GitHub for Beginners - Crash Course", channel: "freeCodeCamp", url: "https://www.youtube.com/watch?v=RGOj5yH7evk" },
+    ],
+  },
+};
+
+/** Word-boundary keywords for the curated fallback (so "git" doesn't match "digital"). */
+const CURATED_MATCH: [RegExp, keyof typeof CURATED_RESOURCES][] = [
+  [/\btypescript\b/i, "typescript"],
+  [/\bnext(\.js|js)\b/i, "next"],
+  [/\breact(\.js|js)?\b(?!ive)/i, "react"],
+  [/\bnode(\.js|js)\b|\bexpress(\.js)?\b/i, "node"],
+  [/\bjavascript\b|\bjs\b/i, "javascript"],
+  [/\bpython\b/i, "python"],
+  [/\bdocker\b/i, "docker"],
+  [/\b(my|postgre|ms)?sql\b(?<!nosql)/i, "sql"],
+  [/\bgit(hub)?\b/i, "git"],
+];
+
+const hasVideos = (v: LessonVideos | null | undefined): v is LessonVideos => !!v && Array.isArray(v.videos) && v.videos.length > 0;
+const resourceKey = (skill: string, topic: string) => `${skill.trim().toLowerCase()}::${topic.trim().toLowerCase()}`;
+
+/**
+ * YouTube suggestions are shared across learners in `learningResources`,
+ * keyed by skill + topic. Lessons are already cached per learner profile in
+ * `learningContent`; this second cache lets a *new* lesson for a topic skip
+ * the video search entirely when any earlier learner already found videos.
+ */
+async function cachedTopicVideos(db: Db, skill: string, topic: string): Promise<LessonVideos | null> {
+  const doc = await db.collection("learningResources").findOne({ key: resourceKey(skill, topic) }, { projection: { videos: 1 } });
+  const v = doc?.videos as LessonVideos | undefined;
+  return hasVideos(v) ? v : null;
+}
+
+async function rememberTopicVideos(db: Db, skill: string, topic: string, videos: LessonVideos): Promise<void> {
+  const now = new Date();
+  await db.collection("learningResources").updateOne(
+    { key: resourceKey(skill, topic) },
+    { $set: { key: resourceKey(skill, topic), skill, topic, videos, updatedAt: now }, $setOnInsert: { createdAt: now } },
+    { upsert: true },
+  );
+}
+
+/** Static, hand-picked videos for the most common skills — used only when nothing better exists. */
+function curatedVideos(skill: string, topic: string): LessonVideos | null {
+  const hit = CURATED_MATCH.find(([re]) => re.test(skill)) ?? CURATED_MATCH.find(([re]) => re.test(topic));
+  return hit ? CURATED_RESOURCES[hit[1]] : null;
+}
+
+/** A YouTube search link so the lesson always has somewhere to go for video. */
+function searchOnly(skill: string, topic: string): LessonVideos {
+  const q = `${skill} ${topic} tutorial`;
+  return { query: q, search_url: `https://www.youtube.com/results?search_query=${encodeURIComponent(q)}`, videos: [] };
+}
+
 function sanitizeLesson(r: LearningLessonResponse, learner: Learner): Omit<LessonContent, "cached"> {
   const slides = (Array.isArray(r?.slides) ? r.slides : []).filter(isRecord).map((s) => ({
     title: str(s.title, 90) || "Slide",
@@ -458,9 +581,18 @@ export async function getLearningContent(
   try {
     if (kind === "lesson") {
       const hit = await cached<Omit<LessonContent, "cached">>(db, key);
-      if (hit) return { ok: true, content: { ...hit, cached: true } };
-      const content = sanitizeLesson(await agent.learningLesson({ skill: step.skill, topic, learner, videos: true }), learner);
+      if (hit) {
+        // Older cached lessons may predate the shared video cache — top them up without a write.
+        const videos = hasVideos(hit.videos) ? hit.videos : (await cachedTopicVideos(db, step.skill, topic.name)) ?? curatedVideos(step.skill, topic.name) ?? hit.videos;
+        return { ok: true, content: { ...hit, videos, cached: true } };
+      }
+      // Reuse videos another learner already found for this topic, so the agent skips the search.
+      const known = await cachedTopicVideos(db, step.skill, topic.name);
+      const content = sanitizeLesson(await agent.learningLesson({ skill: step.skill, topic, learner, videos: !known }), learner);
       if (content.slides.length === 0) return fail(502, "The learning agent returned an empty lesson. Please try again.");
+      if (known) content.videos = known;
+      else if (hasVideos(content.videos)) await rememberTopicVideos(db, step.skill, topic.name, content.videos);
+      else content.videos = curatedVideos(step.skill, topic.name) ?? content.videos ?? searchOnly(step.skill, topic.name);
       await store(db, key, kind, step, topic, learner, content);
       return { ok: true, content: { ...content, cached: false } };
     }

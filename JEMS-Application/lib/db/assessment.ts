@@ -56,11 +56,19 @@ export interface SkillAssessmentRecord {
   lockedUntil: string | null;
 }
 
+/** Baseline used only when live openings and the roadmap name fewer than 12 skills. */
+const CORE_SKILLS = [
+  "JavaScript", "TypeScript", "React", "Node.js", "Python", "SQL", "Git", "REST APIs",
+  "HTML5", "CSS3", "Next.js", "Docker", "MongoDB", "Data Structures", "System Design", "AWS",
+];
+
 export interface AssessmentState {
   catalogue: CatalogueSkill[];
   skills: ProfileSkill[];
   softSkills: Record<SoftSkillKey, number> | null;
   questionnaireAt: string | null;
+  /** The last questionnaire's soft-skill / scenario answers, so editing starts from them. */
+  answers: { likert: Record<string, number>; situational: Record<string, number> } | null;
   results: SkillAssessmentRecord[];
   targetRole: string;
 }
@@ -94,6 +102,18 @@ export function parseProfileSkills(raw: unknown): ProfileSkill[] {
     .filter((s) => s.name);
 }
 
+function numberMap(v: unknown): Record<string, number> {
+  if (!v || typeof v !== "object") return {};
+  return Object.fromEntries(Object.entries(v as Record<string, unknown>).filter(([, n]) => Number.isFinite(Number(n))).map(([k, n]) => [k, Number(n)]));
+}
+
+function answersFrom(assessment: unknown): AssessmentState["answers"] {
+  const a = (assessment ?? {}) as Record<string, unknown>;
+  const likert = numberMap(a.likert);
+  const situational = numberMap(a.situational);
+  return Object.keys(likert).length || Object.keys(situational).length ? { likert, situational } : null;
+}
+
 export async function getAssessmentState(userId: string): Promise<AssessmentState | null> {
   if (!ObjectId.isValid(userId)) return null;
   try {
@@ -110,26 +130,32 @@ export async function getAssessmentState(userId: string): Promise<AssessmentStat
     const careerPath = isCareerPath(str(goals.careerPath)) ? str(goals.careerPath) : (careerPathForTargetRole(targetRole) ?? "fullstack");
     const modules = allModules(getRoadmap(careerPath));
 
-    // Industry-shared skill catalogue: what companies list, plus the path's own skills.
-    const demand = new Map<string, { name: string; demand: number }>();
-    const bump = (name: string, w: number) => {
+    // Industry-shared skill catalogue: what live openings ask for, plus the
+    // student's roadmap skills. `rank` orders the list; `openings` is the real
+    // count of open postings that require the skill (what the UI shows).
+    const demand = new Map<string, { name: string; rank: number; openings: number }>();
+    const bump = (name: string, rank: number, opening = false) => {
       const k = norm(name);
       if (!k) return;
-      const cur = demand.get(k) ?? { name, demand: 0 };
-      cur.demand += w;
+      const cur = demand.get(k) ?? { name, rank: 0, openings: 0 };
+      cur.rank += rank;
+      if (opening) cur.openings += 1;
       demand.set(k, cur);
     };
     for (const j of jobs) {
-      (Array.isArray(j.requiredSkills) ? j.requiredSkills : []).forEach((s: unknown) => bump(str(s), 1));
+      (Array.isArray(j.requiredSkills) ? j.requiredSkills : []).forEach((s: unknown) => bump(str(s), 1, true));
       (Array.isArray(j.niceToHave) ? j.niceToHave : []).forEach((s: unknown) => bump(str(s), 0.5));
     }
     modules.forEach((m) => m.skills.forEach((s) => bump(s, 0.25)));
+    // Only when there's little live data (new platform, few postings) fall
+    // back to a baseline list so the questionnaire is never empty.
+    if (demand.size < 12) CORE_SKILLS.forEach((s) => bump(s, 0.1));
 
     const catalogue: CatalogueSkill[] = Array.from(demand.values())
-      .sort((a, b) => b.demand - a.demand)
+      .sort((a, b) => b.rank - a.rank || a.name.localeCompare(b.name))
       .map((d) => {
         const mod = modules.find((m) => m.skills.some((s) => norm(s) === norm(d.name)));
-        return { name: d.name, demand: Math.round(d.demand), testable: !!bankFor(d.name), moduleId: mod?.id ?? null, moduleTitle: mod?.title ?? null };
+        return { name: d.name, demand: d.openings, testable: !!bankFor(d.name), moduleId: mod?.id ?? null, moduleTitle: mod?.title ?? null };
       });
 
     const soft = p.softSkills as Record<string, unknown> | undefined;
@@ -142,6 +168,7 @@ export async function getAssessmentState(userId: string): Promise<AssessmentStat
       skills: parseProfileSkills(p.skills),
       softSkills,
       questionnaireAt: iso((p.assessment as Record<string, unknown> | undefined)?.questionnaireAt),
+      answers: answersFrom(p.assessment),
       results: results.map((r) => ({
         skill: str(r.skill),
         score: Number(r.score) || 0,
@@ -183,7 +210,7 @@ export async function saveQuestionnaire(userId: string, answers: QuestionnaireAn
         $set: {
           skills: [...verified, ...claimed].map((s) => ({ ...s, verifiedAt: s.verifiedAt ? new Date(s.verifiedAt) : undefined })),
           softSkills: scoreSoftSkills(answers),
-          assessment: { questionnaireAt: now },
+          assessment: { questionnaireAt: now, likert: answers.likert, situational: answers.situational },
           updatedAt: now,
         },
         $setOnInsert: { userId: _id, createdAt: now },

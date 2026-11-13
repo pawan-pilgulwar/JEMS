@@ -1,7 +1,7 @@
 "use client";
 
-import Link from "next/link";
-import { BadgeCheck, Check } from "lucide-react";
+import { useState } from "react";
+import { BadgeCheck, Check, Plus, Trash2 } from "lucide-react";
 import { EntryCard, FormSection } from "./FormSection";
 import {
   DeleteButton,
@@ -36,7 +36,30 @@ interface ResumeEditorProps {
 const levelLabel = (n: number): ProficiencyLevel => (n >= 85 ? "Expert" : n >= 70 ? "Advanced" : n >= 50 ? "Intermediate" : "Beginner");
 
 export default function ResumeEditor({ data, setData, verifiedSkills = [] }: ResumeEditorProps) {
-  /** Skills are a checklist over the student's verified skills — never typed in. */
+  const [newSkill, setNewSkill] = useState("");
+
+  const addSkill = (name: string) => {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    const key = trimmed.toLowerCase();
+    if (data.skills.some((s) => s.name.trim().toLowerCase() === key)) return;
+    const isVerified = verifiedSkills.find((vs) => vs.name.trim().toLowerCase() === key);
+    setData((d) => ({
+      ...d,
+      skills: [
+        ...d.skills,
+        {
+          id: uid("skill"),
+          name: trimmed,
+          level: isVerified ? levelLabel(isVerified.level) : "Intermediate",
+          verified: Boolean(isVerified),
+        },
+      ],
+    }));
+    setNewSkill("");
+  };
+
+  /** Skills can also be toggled from verified skills */
   const toggleVerifiedSkill = (vs: VerifiedSkill) =>
     setData((d) => {
       const key = vs.name.trim().toLowerCase();
@@ -181,39 +204,104 @@ export default function ResumeEditor({ data, setData, verifiedSkills = [] }: Res
         />
       </FormSection>
 
-      {/* Section 5 — Skills (verified only) */}
+      {/* Section 5 — Skills */}
       <FormSection
         title="Skills"
-        subtitle="Only skills verified by a JEMS assessment can appear on your resume — self-declared skills are not accepted."
-        count={`${data.skills.length} verified skill${data.skills.length === 1 ? "" : "s"} on this resume`}
+        subtitle="Add skills from your previous resume or scratch, and verify them via JEMS assessments for verified badges."
+        count={`${data.skills.length} skill${data.skills.length === 1 ? "" : "s"} on resume`}
       >
-        {verifiedSkills.length === 0 ? (
-          <p className="rounded-lg border border-dashed border-lightgray bg-surface-2 p-4 text-sm text-mediumgray">
-            You have no verified skills yet.{" "}
-            <Link href="/student/assessment" className="font-semibold text-slate hover:underline">Take a skill assessment</Link> or pass a roadmap module quiz, then come back to add them here.
-          </p>
-        ) : (
-          <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            {verifiedSkills.map((vs) => {
-              const on = data.skills.some((k) => k.name.trim().toLowerCase() === vs.name.trim().toLowerCase());
-              return (
-                <li key={vs.name}>
-                  <button
-                    type="button"
-                    onClick={() => toggleVerifiedSkill(vs)}
-                    aria-pressed={on}
-                    className={`flex w-full items-center gap-3 rounded-lg border p-3 text-left transition-colors ${on ? "border-emerald/40 bg-emerald/5" : "border-lightgray hover:bg-surface-2"}`}
-                  >
-                    <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded border ${on ? "border-emerald bg-emerald text-white" : "border-lightgray bg-white"}`}>{on && <Check className="h-3 w-3" />}</span>
-                    <span className="min-w-0 flex-1">
-                      <span className="flex items-center gap-1.5 text-sm font-medium text-navy">{vs.name}<BadgeCheck className="h-3.5 w-3.5 text-emerald" /></span>
-                      <span className="text-[11px] text-mediumgray">Verified · {levelLabel(vs.level)}</span>
-                    </span>
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
+        {/* Add custom skill input */}
+        <div className="flex gap-2 mb-4">
+          <input
+            type="text"
+            value={newSkill}
+            onChange={(e) => setNewSkill(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                addSkill(newSkill);
+              }
+            }}
+            placeholder="Type any skill (e.g. Next.js, Python, Figma) and press Enter"
+            className="h-10 flex-1 rounded-lg border border-lightgray bg-white px-3 text-sm text-navy outline-none placeholder:text-mediumgray focus:border-slate"
+          />
+          <button
+            type="button"
+            onClick={() => addSkill(newSkill)}
+            disabled={!newSkill.trim()}
+            className="inline-flex h-10 items-center gap-1.5 rounded-lg bg-navy px-4 text-xs font-semibold text-white transition-colors hover:bg-[#1f2937] disabled:opacity-50"
+          >
+            <Plus className="h-4 w-4" /> Add
+          </button>
+        </div>
+
+        {/* Current skills list */}
+        {data.skills.length > 0 && (
+          <div className="mb-4 flex flex-wrap gap-2 rounded-lg border border-lightgray bg-surface-2 p-3">
+            {data.skills.map((s) => (
+              <span
+                key={s.id}
+                className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium ${
+                  s.verified
+                    ? "bg-emerald/10 text-emerald border border-emerald/30"
+                    : "bg-white text-navy border border-lightgray"
+                }`}
+              >
+                {s.verified && <BadgeCheck className="h-3.5 w-3.5 text-emerald" />}
+                {s.name}
+                <button
+                  type="button"
+                  onClick={() => removeItem("skills", s.id)}
+                  title={`Remove ${s.name}`}
+                  className="ml-1 text-mediumgray hover:text-red-500"
+                >
+                  <Trash2 className="h-3 w-3" />
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
+
+        {/* Verified skills section */}
+        {verifiedSkills.length > 0 && (
+          <div className="mt-4 border-t border-lightgray pt-4">
+            <p className="mb-2 text-xs font-semibold text-navy flex items-center gap-1.5">
+              <BadgeCheck className="h-4 w-4 text-emerald" />
+              Verified Skills by JEMS (Click to toggle on resume):
+            </p>
+            <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              {verifiedSkills.map((vs) => {
+                const on = data.skills.some((k) => k.name.trim().toLowerCase() === vs.name.trim().toLowerCase());
+                return (
+                  <li key={vs.name}>
+                    <button
+                      type="button"
+                      onClick={() => toggleVerifiedSkill(vs)}
+                      aria-pressed={on}
+                      className={`flex w-full items-center gap-3 rounded-lg border p-2.5 text-left transition-colors ${
+                        on ? "border-emerald/40 bg-emerald/5" : "border-lightgray hover:bg-surface-2"
+                      }`}
+                    >
+                      <span
+                        className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${
+                          on ? "border-emerald bg-emerald text-white" : "border-lightgray bg-white"
+                        }`}
+                      >
+                        {on && <Check className="h-3 w-3" />}
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="flex items-center gap-1.5 text-xs font-medium text-navy">
+                          {vs.name}
+                          <BadgeCheck className="h-3 w-3 text-emerald" />
+                        </span>
+                        <span className="text-[10px] text-mediumgray">Verified · {levelLabel(vs.level)}</span>
+                      </span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
         )}
       </FormSection>
 

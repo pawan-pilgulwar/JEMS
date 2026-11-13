@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import {
@@ -9,7 +9,6 @@ import {
   GraduationCap,
   BookOpen,
   School,
-  ArrowRight,
   Sparkles,
 } from "lucide-react";
 import WelcomeBanner from "@/components/welcome/WelcomeBanner";
@@ -163,22 +162,17 @@ export default function Home() {
   const [welcomeDismissed, setWelcomeDismissed] = useState(false);
   const showWelcome = !hasEntered && !welcomeDismissed;
 
-  const arrivedSignedIn = useRef<boolean | null>(null);
-
   useEffect(() => {
     if (status === "loading") return;
-    if (arrivedSignedIn.current === null) {
-      arrivedSignedIn.current = status === "authenticated";
+    if (status === "authenticated") {
+      const home: Record<string, string> = {
+        student: "/student/dashboard",
+        company: "/company/dashboard",
+        institution: "/institution/dashboard",
+        faculty: "/faculty/dashboard",
+      };
+      router.replace(home[session?.user?.role ?? "student"] ?? "/student/dashboard");
     }
-    if (!arrivedSignedIn.current) return;
-
-    const home: Record<string, string> = {
-      student: "/student/dashboard",
-      company: "/company/dashboard",
-      institution: "/institution/dashboard",
-      faculty: "/faculty/dashboard",
-    };
-    router.replace(home[session?.user?.role ?? "student"] ?? "/student/dashboard");
   }, [status, session, router]);
 
   const dismissWelcome = useCallback(() => setWelcomeDismissed(true), []);
@@ -190,7 +184,7 @@ export default function Home() {
     window.setTimeout(() => startTour("landing"), 350);
   }, [startTour]);
 
-  if (status === "authenticated" && arrivedSignedIn.current) return null;
+  if (status === "authenticated") return null;
 
   return (
     <div className="flex min-h-screen w-full flex-col">
@@ -266,7 +260,7 @@ export default function Home() {
       </section>
 
       {/* ── Module Cards Grid ──────────────────────────────────── */}
-      <section className="mx-auto w-full max-w-7xl px-5 pb-20 pt-4 md:px-8">
+      <section id="how-it-works" className="mx-auto w-full max-w-7xl scroll-mt-20 px-5 pb-20 pt-4 md:px-8">
         <div className="grid gap-5 md:grid-cols-2">
           {MODULES.map((mod, idx) => (
             <article

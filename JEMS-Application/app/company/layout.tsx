@@ -7,6 +7,7 @@ const NAV: PortalNavItem[] = [
   { label: "Jobs / Internships", href: "/company/opportunities", icon: "Briefcase" },
   { label: "Candidates", href: "/company/candidates", icon: "Users" },
   { label: "Programs", href: "/company/programs", icon: "GraduationCap" },
+  { label: "Company Profile", href: "/company/profile", icon: "Building2" },
 ];
 
 export default async function CompanyLayout({ children }: { children: React.ReactNode }) {

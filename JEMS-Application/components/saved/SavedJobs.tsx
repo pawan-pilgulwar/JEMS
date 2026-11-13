@@ -1,12 +1,14 @@
 "use client";
 
+import CompanyLink from "@/components/profile/CompanyLink";
 import { useState } from "react";
-import { Bookmark, Check, LoaderCircle, MapPin, Trash2 } from "lucide-react";
+import { Bookmark, Check, MapPin, Trash2 } from "lucide-react";
 import Link from "next/link";
 import DashboardShell, { DashboardContainer } from "@/components/dashboard/student/DashboardShell";
 import { Card } from "@/components/dashboard/student/ui";
 
-import type { SavedJobView } from "@/lib/db/student-data";
+import ApplyDialog from "@/components/jobs/ApplyDialog";
+import type { ResumeSummary, SavedJobView } from "@/lib/db/student-data";
 
 function matchTone(match: number) {
   if (match >= 90) return "bg-emerald/10 text-emerald";
@@ -14,10 +16,9 @@ function matchTone(match: number) {
   return "bg-gold/10 text-[#b45309]";
 }
 
-export default function SavedJobs({ saved, initialApplied }: { saved: SavedJobView[]; initialApplied: string[] }) {
+export default function SavedJobs({ saved, initialApplied, resumes }: { saved: SavedJobView[]; initialApplied: string[]; resumes: ResumeSummary[] }) {
   const [jobs, setJobs] = useState<SavedJobView[]>(saved);
   const [applied, setApplied] = useState<Set<string>>(() => new Set(initialApplied));
-  const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState("");
 
   const remove = async (row: SavedJobView) => {
@@ -33,19 +34,12 @@ export default function SavedJobs({ saved, initialApplied }: { saved: SavedJobVi
     }
   };
 
-  const apply = async (row: SavedJobView) => {
-    setBusy(row.id);
+  // Applying goes through the same resume check / upload dialog as Job Matches.
+  const [applyRow, setApplyRow] = useState<SavedJobView | null>(null);
+  const [notice, setNotice] = useState("");
+  const apply = (row: SavedJobView) => {
     setError("");
-    try {
-      const res = await fetch("/api/student/applications", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ jobId: row.jobId }) });
-      const data = (await res.json().catch(() => ({}))) as { error?: string };
-      if (!res.ok && res.status !== 409) throw new Error(data.error || "Could not apply.");
-      setApplied((prev) => new Set(prev).add(row.jobId));
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not apply.");
-    } finally {
-      setBusy(null);
-    }
+    setApplyRow(row);
   };
 
   return (
@@ -87,7 +81,7 @@ export default function SavedJobs({ saved, initialApplied }: { saved: SavedJobVi
                       </span>
                     </div>
                     <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-mediumgray">
-                      <span className="font-medium text-navy">{j.company}</span>
+                      <CompanyLink id={j.companyId} name={j.company} className="font-medium text-navy" />
                       <span className="inline-flex items-center gap-1">
                         <MapPin className="h-3.5 w-3.5" />
                         {j.location}
@@ -113,10 +107,8 @@ export default function SavedJobs({ saved, initialApplied }: { saved: SavedJobVi
                       <button
                         type="button"
                         onClick={() => apply(j)}
-                        disabled={busy === j.id}
                         className="inline-flex items-center gap-1.5 rounded-lg bg-primary-gradient px-5 py-2.5 text-sm font-semibold text-white shadow-[0_4px_12px_rgba(234,88,12,0.25)] transition-transform hover:-translate-y-0.5 disabled:opacity-60"
                       >
-                        {busy === j.id && <LoaderCircle className="h-4 w-4 animate-spin" />}
                         Apply
                       </button>
                     )}
@@ -125,6 +117,19 @@ export default function SavedJobs({ saved, initialApplied }: { saved: SavedJobVi
               ))}
             </div>
           </>
+        )}
+        {notice && <p className="rounded-lg border border-emerald/30 bg-emerald/5 px-4 py-3 text-sm text-emerald">{notice}</p>}
+        {applyRow && (
+          <ApplyDialog
+            job={{ id: applyRow.jobId, role: applyRow.role, company: applyRow.company, companyId: applyRow.companyId, location: applyRow.location, requiredSkills: applyRow.requiredSkills }}
+            resumes={resumes}
+            onClose={() => setApplyRow(null)}
+            onApplied={(message) => {
+              setApplied((prev) => new Set(prev).add(applyRow.jobId));
+              setApplyRow(null);
+              setNotice(message);
+            }}
+          />
         )}
       </DashboardContainer>
     </DashboardShell>

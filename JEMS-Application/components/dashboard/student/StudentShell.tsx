@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useLocalFlag } from "@/lib/local-flag";
 import Sidebar from "./Sidebar";
 import { OpenMobileSidebarProvider, SidebarPinnedProvider } from "./sidebar-context";
 
@@ -23,21 +24,9 @@ export default function StudentShell({
   children: React.ReactNode;
 }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [sidebarPinned, setSidebarPinned] = useState(false);
-
-  useEffect(() => {
-    if (window.localStorage.getItem(PINNED_STORAGE_KEY) === "true") {
-      setSidebarPinned(true);
-    }
-  }, []);
-
-  const togglePinned = () => {
-    setSidebarPinned((v) => {
-      const next = !v;
-      window.localStorage.setItem(PINNED_STORAGE_KEY, String(next));
-      return next;
-    });
-  };
+  // Read after hydration so the server and first client render agree.
+  const [sidebarPinned, setSidebarPinned] = useLocalFlag(PINNED_STORAGE_KEY);
+  const togglePinned = () => setSidebarPinned(!sidebarPinned);
 
   return (
     <SidebarPinnedProvider value={sidebarPinned}>

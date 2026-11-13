@@ -1,6 +1,6 @@
 "use client";
 
-import { BookOpen, Building2, TrendingUp, Award, Code, Zap } from "lucide-react";
+import { BookOpen, Building2, TrendingUp, Award } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { SectionHeading, revealClass, useReveal } from "./_shared";
 

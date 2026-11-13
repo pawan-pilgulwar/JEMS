@@ -43,7 +43,7 @@ const messages: Record<Section, SectionMessage> = {
   impact: {
     title: "Built for Everyone",
     message: "Students get verified portfolios. Faculty get approval tools. Companies get verified shortlists. Institutions get audit-ready reports. One platform, endless value.",
-    action: { text: "Get Started", url: "#cta" },
+    action: { text: "Get Started", url: "#get-started" },
   },
 };
 
@@ -95,18 +95,27 @@ export default function GuideCharacter() {
         {/* Speech Bubble */}
         <div className="mb-3 animate-slide-up">
           <div className="bg-white rounded-3xl p-6 shadow-[0_20px_40px_rgba(0,0,0,0.1)] border border-navy/10 backdrop-blur-sm">
-            {/* Header with minimize */}
+            {/* Header with minimize and close */}
             <div className="flex items-center justify-between mb-2">
               <h3 className="font-display text-lg font-bold text-navy">
                 {currentMessage.title}
               </h3>
-              <button
-                onClick={() => setIsMinimized(true)}
-                className="p-1.5 hover:bg-navy/5 rounded-lg transition-colors text-navy/60 hover:text-navy"
-                aria-label="Minimize"
-              >
-                <ChevronDown className="h-4 w-4" />
-              </button>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setIsMinimized(true)}
+                  className="p-1.5 hover:bg-navy/5 rounded-lg transition-colors text-navy/60 hover:text-navy"
+                  aria-label="Minimize"
+                >
+                  <ChevronDown className="h-4 w-4" />
+                </button>
+                <button
+                  onClick={() => setIsVisible(false)}
+                  className="p-1.5 hover:bg-navy/5 rounded-lg transition-colors text-navy/60 hover:text-navy"
+                  aria-label="Close"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
             </div>
 
             {/* Message */}

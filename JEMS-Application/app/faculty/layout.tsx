@@ -3,7 +3,9 @@ import { requireRole } from "@/lib/auth/require-role";
 
 const NAV: PortalNavItem[] = [
   { label: "Dashboard", href: "/faculty/dashboard", icon: "LayoutDashboard" },
+  { label: "Students", href: "/faculty/students", icon: "Users" },
   { label: "Collaborations", href: "/faculty/collaborations", icon: "Handshake" },
+  { label: "My Profile", href: "/faculty/profile", icon: "UserRound" },
 ];
 
 export default async function FacultyLayout({ children }: { children: React.ReactNode }) {

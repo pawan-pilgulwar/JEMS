@@ -5,19 +5,18 @@ import { usePathname } from "next/navigation";
 import { signOut } from "next-auth/react";
 import { useEffect, useRef, useState } from "react";
 import {
-  HelpCircle,
   Home,
   LifeBuoy,
   LogOut,
   Menu,
-  Search,
   Settings,
   Sparkles,
   User,
 } from "lucide-react";
 import NotificationBell from "@/components/notifications/NotificationBell";
-import { useTour } from "@/components/tour/TourProvider";
+import TourMenu from "@/components/tour/TourMenu";
 import { crumbForPath } from "./nav-items";
+import QuickSearch from "./QuickSearch";
 import { useOpenMobileSidebar } from "./sidebar-context";
 import { useStudent } from "./StudentContext";
 import { UserAvatar } from "./ui";
@@ -33,7 +32,6 @@ export default function Topbar() {
   const pathname = usePathname();
   const openMobileSidebar = useOpenMobileSidebar();
   const crumb = crumbForPath(pathname);
-  const { start: startTour } = useTour();
 
   const [menuOpen, setMenuOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -43,7 +41,9 @@ export default function Topbar() {
     const onClick = (e: MouseEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) setMenuOpen(false);
     };
-    const onEsc = (e: KeyboardEvent) => e.key === "Escape" && setMenuOpen(false);
+    const onEsc = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMenuOpen(false);
+    };
     document.addEventListener("mousedown", onClick);
     document.addEventListener("keydown", onEsc);
     return () => {
@@ -80,39 +80,21 @@ export default function Topbar() {
         </span>
       </nav>
 
-      {/* Search */}
-      <div className="relative ml-auto hidden max-w-xs flex-1 sm:block">
-        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-mediumgray" />
-        <input
-          type="search"
-          placeholder="Search …"
-          className="h-9 w-full rounded-lg border border-navy/[0.08] bg-surface-2 pl-9 pr-12 text-sm text-navy outline-none transition-[border-color,box-shadow,background-color] duration-200 placeholder:text-mediumgray focus:border-orange focus:bg-white focus:ring-4 focus:ring-orange/15"
-        />
-        <kbd className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 rounded border border-navy/[0.08] bg-white px-1.5 py-0.5 font-sans text-[10px] font-semibold text-mediumgray">
-          ⌘K
-        </kbd>
-      </div>
+      <QuickSearch />
 
       <div className="ml-auto flex items-center gap-1.5 sm:ml-0">
         <NotificationBell />
-        <button
-          type="button"
-          aria-label="Take the product tour"
-          title="Take the product tour"
-          data-tour="help"
-          onClick={() => startTour("student")}
-          className="hidden h-9 w-9 items-center justify-center rounded-lg text-mediumgray transition-colors hover:bg-surface hover:text-navy sm:flex"
-        >
-          <HelpCircle className="h-5 w-5" />
-        </button>
+        <div className="hidden sm:block">
+          <TourMenu tour="student" />
+        </div>
 
-        <button
-          type="button"
+        <Link
+          href="/pricing"
           className="ml-1 hidden items-center gap-1.5 rounded-lg bg-cta-gradient px-3.5 py-2 text-sm font-semibold text-white shadow-[var(--shadow-cta)] transition-transform duration-200 hover:-translate-y-0.5 active:translate-y-0 sm:inline-flex"
         >
           <Sparkles className="h-4 w-4" />
           Upgrade
-        </button>
+        </Link>
 
         <div className="relative ml-1" ref={ref}>
           <button

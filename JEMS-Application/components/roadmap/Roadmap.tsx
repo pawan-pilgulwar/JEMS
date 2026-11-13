@@ -6,19 +6,15 @@ import { useRouter } from "next/navigation";
 import {
   Award,
   BookOpen,
-  ChevronDown,
   Circle,
   CircleCheck,
   Clock,
-  Code,
-  FileText,
   Lock,
   Pencil,
   Play,
   Sparkles,
   Target,
   TrendingUp,
-  Video,
 } from "lucide-react";
 import DashboardShell, { DashboardContainer } from "@/components/dashboard/student/DashboardShell";
 import { Card, ProgressBar } from "@/components/dashboard/student/ui";
@@ -38,8 +34,6 @@ const DIFFICULTY_STYLE: Record<Module["difficulty"], string> = {
   Intermediate: "bg-gold/15 text-amber-700",
   Advanced: "bg-red-50 text-red-600",
 };
-
-const RESOURCE_ICON = { video: Video, article: FileText, project: Code } as const;
 
 /**
  * One-time "generating your roadmap" screen shown right after the student
@@ -99,125 +93,89 @@ function ModuleCard({
   mod,
   done,
   locked,
-  hasSkill,
-  defaultOpen,
 }: {
   mod: Module;
   done: boolean;
   locked: boolean;
-  hasSkill: (s: string) => boolean;
-  defaultOpen: boolean;
 }) {
-  const [open, setOpen] = useState(defaultOpen);
+  const [open, setOpen] = useState(false);
   const panelId = `module-${mod.id}-panel`;
 
   return (
-    <Card className={`overflow-hidden ${done ? "border-emerald/30" : ""}`}>
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        aria-expanded={open}
-        aria-controls={panelId}
-        className="flex w-full items-center gap-4 px-5 py-4 text-left transition-colors hover:bg-surface-2"
-      >
-        <span
-          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
-            done ? "bg-emerald/10 text-emerald" : locked ? "bg-surface text-mediumgray" : "bg-slate/10 text-slate"
-          }`}
-        >
-          {done ? <CircleCheck className="h-5 w-5" /> : locked ? <Lock className="h-4 w-4" /> : <BookOpen className="h-5 w-5" />}
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="flex flex-wrap items-center gap-2">
-            <span className="font-semibold text-navy">{mod.title}</span>
-            {done ? (
-              <span className="rounded-full bg-emerald/10 px-2 py-0.5 text-[11px] font-semibold text-emerald">Completed</span>
-            ) : (
-              <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${DIFFICULTY_STYLE[mod.difficulty]}`}>
-                {mod.difficulty}
-              </span>
-            )}
+    <Card className={`overflow-hidden transition-all ${done ? "border-emerald/30 bg-emerald/[0.02]" : locked ? "bg-surface-2/40 opacity-80" : "border-slate/30"}`}>
+      <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-3.5 min-w-0">
+          <span
+            className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl font-bold ${
+              done
+                ? "bg-emerald/10 text-emerald"
+                : locked
+                  ? "bg-surface text-mediumgray"
+                  : "bg-primary-gradient text-white shadow-xs"
+            }`}
+          >
+            {done ? <CircleCheck className="h-5 w-5" /> : locked ? <Lock className="h-4 w-4" /> : <BookOpen className="h-5 w-5" />}
           </span>
-          <span className="mt-0.5 flex items-center gap-3 text-xs text-mediumgray">
-            <span className="inline-flex items-center gap-1"><Clock className="h-3 w-3" />{mod.duration}</span>
-            <span className="inline-flex items-center gap-1"><Award className="h-3 w-3" />{mod.skills.length} skills</span>
-          </span>
-        </span>
-        <ChevronDown className={`h-4 w-4 shrink-0 text-mediumgray transition-transform ${open ? "rotate-180" : ""}`} />
-      </button>
 
-      {open && (
-        <div id={panelId} className="space-y-5 border-t border-lightgray px-5 pb-5 pt-4">
-          <div>
-            <h4 className="mb-2 flex items-center gap-2 text-sm font-semibold text-navy">
-              <Target className="h-4 w-4 text-slate" /> Topics covered
-            </h4>
-            <div className="flex flex-wrap gap-2">
-              {mod.topics.map((t) => (
-                <span key={t} className="rounded-md border border-lightgray bg-white px-2 py-0.5 text-xs text-navy">{t}</span>
-              ))}
-            </div>
-          </div>
-
-          <div>
-            <h4 className="mb-2 flex items-center gap-2 text-sm font-semibold text-navy">
-              <BookOpen className="h-4 w-4 text-slate" /> Learning resources
-            </h4>
-            <ul className="space-y-2">
-              {mod.resources.map((r, i) => {
-                const Icon = RESOURCE_ICON[r.type];
-                return (
-                  <li key={i} className="flex items-center gap-3 rounded-lg bg-surface-2 p-3">
-                    <span className="flex h-8 w-8 items-center justify-center rounded-lg border border-lightgray bg-white text-mediumgray">
-                      <Icon className="h-4 w-4" />
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-sm font-medium text-navy">{r.title}</span>
-                      {r.duration && <span className="text-xs text-mediumgray">{r.duration}</span>}
-                    </span>
-                    <span className="rounded-md bg-white px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-mediumgray">
-                      {r.type}
-                    </span>
-                  </li>
-                );
-              })}
-            </ul>
-          </div>
-
-          <div>
-            <h4 className="mb-2 flex items-center gap-2 text-sm font-semibold text-navy">
-              <Award className="h-4 w-4 text-slate" /> Skills you&apos;ll gain
-            </h4>
-            <div className="flex flex-wrap gap-2">
-              {mod.skills.map((s) =>
-                hasSkill(s) ? (
-                  <span key={s} className="inline-flex items-center gap-1 rounded-md bg-emerald/10 px-2 py-0.5 text-xs font-medium text-emerald">
-                    <CircleCheck className="h-3 w-3" />{s}
-                  </span>
-                ) : (
-                  <span key={s} className="rounded-md bg-navy px-2 py-0.5 text-xs font-medium text-white">{s}</span>
-                ),
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <h3 className="text-sm font-bold text-navy truncate">{mod.title}</h3>
+              {done ? (
+                <span className="rounded-full bg-emerald/10 px-2 py-0.5 text-[10px] font-semibold text-emerald">Completed</span>
+              ) : (
+                <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${DIFFICULTY_STYLE[mod.difficulty]}`}>
+                  {mod.difficulty}
+                </span>
               )}
             </div>
+            <p className="mt-0.5 flex flex-wrap items-center gap-x-3 text-xs text-mediumgray">
+              <span className="inline-flex items-center gap-1"><Clock className="h-3 w-3" />{mod.duration}</span>
+              <span>· {mod.skills.slice(0, 3).join(", ")}{mod.skills.length > 3 ? ` +${mod.skills.length - 3}` : ""}</span>
+            </p>
           </div>
+        </div>
+
+        <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
+          <button
+            type="button"
+            onClick={() => setOpen((v) => !v)}
+            aria-expanded={open}
+            aria-controls={panelId}
+            className="rounded-lg border border-lightgray bg-white px-2.5 py-1.5 text-xs font-medium text-mediumgray hover:border-slate hover:text-navy transition-colors"
+          >
+            {open ? "Hide Details" : "Details"}
+          </button>
 
           {locked ? (
-            <p className="flex items-center justify-center gap-2 rounded-lg border border-dashed border-lightgray py-3 text-xs text-mediumgray">
-              <Lock className="h-3.5 w-3.5" /> Pass the previous module&apos;s quiz to unlock
-            </p>
+            <span className="inline-flex items-center gap-1 rounded-lg bg-surface px-3 py-1.5 text-xs font-semibold text-mediumgray">
+              <Lock className="h-3 w-3" /> Locked
+            </span>
           ) : (
             <Link
               href={`/student/roadmap/${mod.id}`}
-              className={`flex w-full items-center justify-center gap-2 rounded-lg py-2.5 text-sm font-semibold transition-transform hover:-translate-y-0.5 ${
+              className={`inline-flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-xs font-semibold transition-transform hover:-translate-y-0.5 ${
                 done
                   ? "border border-lightgray bg-white text-navy hover:border-slate hover:text-slate"
-                  : "bg-primary-gradient text-white shadow-[0_4px_12px_rgba(234,88,12,0.25)]"
+                  : "bg-primary-gradient text-white shadow-xs"
               }`}
             >
-              <Play className="h-4 w-4" />
-              {done ? "Review module" : "Start this module"}
+              <Play className="h-3.5 w-3.5" />
+              {done ? "Review" : "Start Module"}
             </Link>
           )}
+        </div>
+      </div>
+
+      {open && (
+        <div id={panelId} className="border-t border-lightgray bg-surface-2/40 px-5 py-3.5 text-xs">
+          <div className="flex flex-wrap gap-1.5">
+            <span className="font-semibold text-navy">Topics:</span>
+            {mod.topics.map((t) => (
+              <span key={t} className="rounded bg-white px-2 py-0.5 text-navy border border-lightgray">
+                {t}
+              </span>
+            ))}
+          </div>
         </div>
       )}
     </Card>
@@ -228,17 +186,16 @@ export default function Roadmap({
   roadmap,
   goals,
   progress,
-  skills,
   fresh,
 }: {
   roadmap: CareerRoadmap;
   goals: StudentGoals;
   progress: RoadmapProgress;
-  skills: string[];
   fresh: boolean;
 }) {
   const router = useRouter();
   const [generating, setGenerating] = useState(fresh);
+  const [phaseFilter, setPhaseFilter] = useState<number | null>(null);
 
   const modules = allModules(roadmap);
   const passed = new Set(progress.passedModules);
@@ -247,8 +204,6 @@ export default function Roadmap({
   // The first not-yet-passed module in order is the one to continue with.
   const current = modules.find((m) => !passed.has(m.id)) ?? modules[modules.length - 1];
   const currentIdx = modules.findIndex((m) => m.id === current.id);
-  const owned = new Set(skills.map((s) => s.toLowerCase()));
-  const hasSkill = (s: string) => owned.has(s.toLowerCase());
 
   if (generating) {
     return (
@@ -338,9 +293,41 @@ export default function Roadmap({
           </div>
         </Card>
 
+        {/* Phase Filter Tabs */}
+        <div className="flex flex-wrap items-center gap-2 border-b border-lightgray pb-3">
+          <button
+            type="button"
+            onClick={() => setPhaseFilter(null)}
+            className={`rounded-full px-4 py-1.5 text-xs font-semibold transition-colors ${
+              phaseFilter === null
+                ? "bg-navy text-white shadow-xs"
+                : "border border-lightgray bg-white text-mediumgray hover:text-navy"
+            }`}
+          >
+            All Phases ({roadmap.phases.length})
+          </button>
+          {roadmap.phases.map((p, i) => (
+            <button
+              key={p.id}
+              type="button"
+              onClick={() => setPhaseFilter(i)}
+              className={`rounded-full px-4 py-1.5 text-xs font-semibold transition-colors ${
+                phaseFilter === i
+                  ? "bg-navy text-white shadow-xs"
+                  : "border border-lightgray bg-white text-mediumgray hover:text-navy"
+              }`}
+            >
+              Phase {i + 1}: {p.title}
+            </button>
+          ))}
+        </div>
+
         {/* Phases timeline */}
-        <div className="space-y-10">
-          {roadmap.phases.map((phase, phaseIdx) => {
+        <div className="space-y-8">
+          {roadmap.phases
+            .map((phase, phaseIdx) => ({ phase, phaseIdx }))
+            .filter(({ phaseIdx }) => phaseFilter === null || phaseFilter === phaseIdx)
+            .map(({ phase, phaseIdx }) => {
             const phaseDone = phase.modules.every((m) => passed.has(m.id));
             const phaseActive = !phaseDone && phase.modules.some((m) => m.id === current.id);
             return (
@@ -384,8 +371,6 @@ export default function Roadmap({
                         mod={mod}
                         done={passed.has(mod.id)}
                         locked={idx > currentIdx}
-                        hasSkill={hasSkill}
-                        defaultOpen={mod.id === current.id}
                       />
                     );
                   })}

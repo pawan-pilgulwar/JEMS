@@ -1,7 +1,10 @@
 /** Server-side validation for the industry portal's write APIs. */
 
 import type { CollaborationInput } from "@/lib/db/collaborations";
-import { APPLICATION_STATUSES, COLLABORATION_TYPES, type CompanyApplicationStatus, OPPORTUNITY_TYPES, PROGRAM_TYPES } from "@/lib/company/constants";
+import {
+  APPLICATION_STATUSES, COLLABORATION_TYPES, type CompanyApplicationStatus, ENROLLMENT_STATUSES, type EnrollmentStatus,
+  INTEREST_STATUSES, type InterestStatus, LISTING_STATUSES, type ListingStatus, OPPORTUNITY_TYPES, PROGRAM_TYPES,
+} from "@/lib/company/constants";
 import type { OpeningInput, ProgramInput } from "@/lib/db/company";
 import type { ValidationResult } from "./student";
 
@@ -91,3 +94,14 @@ export function validateStatus(body: unknown): ValidationResult<CompanyApplicati
   if (!(APPLICATION_STATUSES as readonly string[]).includes(status)) return { error: "Invalid status." };
   return { value: status as CompanyApplicationStatus };
 }
+
+function oneOf<T extends string>(body: unknown, allowed: readonly T[]): ValidationResult<T> {
+  if (!isRecord(body)) return { error: "Invalid request body." };
+  const status = text(body.status, 30);
+  if (!(allowed as readonly string[]).includes(status)) return { error: "Invalid status." };
+  return { value: status as T };
+}
+
+export const validateEnrollmentStatus = (body: unknown): ValidationResult<EnrollmentStatus> => oneOf(body, ENROLLMENT_STATUSES);
+export const validateInterestStatus = (body: unknown): ValidationResult<InterestStatus> => oneOf(body, INTEREST_STATUSES);
+export const validateListingStatus = (body: unknown): ValidationResult<ListingStatus> => oneOf(body, LISTING_STATUSES);

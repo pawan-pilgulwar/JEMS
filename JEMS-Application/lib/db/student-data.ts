@@ -1,5 +1,6 @@
 import { ObjectId, type Db, type Document } from "mongodb";
 import { getDatabase } from "@/lib/db/mongodb";
+import { resolveInstitution } from "@/lib/db/org-profiles";
 import { scoreAgainst } from "@/lib/agents/engine";
 import type { StudentAdvisorResponse } from "@/lib/agent/types";
 
@@ -108,11 +109,12 @@ export interface StudentProfileView {
   website: string;
   linkedin: string;
   github: string;
-  whatsapp: string;
-  telegram: string;
   phone: string;
   avatar: string;
   title: string;
+  /** The registered institution the student belongs to (empty when none picked). */
+  institution: string;
+  institutionId: string;
   // career answers (from signup)
   experienceLevel: string;
   targetRole: string;
@@ -156,11 +158,11 @@ export async function getStudentProfile(
     website: str(p.website),
     linkedin: str(p.linkedin),
     github: str(p.github),
-    whatsapp: str(p.whatsapp),
-    telegram: str(p.telegram),
     phone: str(p.phone) || str(user.phone),
     avatar: str(p.avatar),
     title: str(p.targetRole) ? `Aspiring ${str(p.targetRole)}` : "Student",
+    institution: str(p.institution),
+    institutionId: p.institutionId instanceof ObjectId ? p.institutionId.toString() : "",
     experienceLevel: str(p.experienceLevel),
     targetRole: str(p.targetRole),
     learningStyle: str(p.learningStyle),
@@ -182,8 +184,6 @@ export interface ProfileUpdate {
   website?: string;
   linkedin?: string;
   github?: string;
-  whatsapp?: string;
-  telegram?: string;
   phone?: string;
   avatar?: string;
   targetRole?: string;
@@ -191,7 +191,7 @@ export interface ProfileUpdate {
 
 const EDITABLE_KEYS: (keyof ProfileUpdate)[] = [
   "firstName", "lastName", "username", "nickname", "displayName", "displayRole",
-  "bio", "location", "website", "linkedin", "github", "whatsapp", "telegram",
+  "bio", "location", "website", "linkedin", "github",
   "phone", "avatar", "targetRole",
 ];
 
@@ -236,12 +236,35 @@ export async function updateStudentProfile(
   });
 }
 
+/**
+ * Links the student to a registered institution (by its account id) so that
+ * institution — and its faculty — can see them; "" unlinks. False when the id
+ * isn't a registered institution.
+ */
+export async function setStudentInstitution(userId: string, institutionId: string): Promise<boolean> {
+  if (!ObjectId.isValid(userId)) return false;
+  const inst = await resolveInstitution(institutionId);
+  if (inst === undefined) return false;
+  return safe("setStudentInstitution", false, async () => {
+    const db = await getDb();
+    await db.collection("studentProfiles").updateOne(
+      { userId: oid(userId) },
+      inst
+        ? { $set: { institution: inst.name, institutionId: inst.id, updatedAt: new Date() } }
+        : { $set: { institution: "", updatedAt: new Date() }, $unset: { institutionId: "" } },
+      { upsert: true },
+    );
+    return true;
+  });
+}
+
 // ── Job matches ─────────────────────────────────────────────────
 
 export interface JobMatchView {
   id: string;
   role: string;
   company: string;
+  companyId: string;
   match: number;
   location: string;
   type: string;
@@ -282,6 +305,7 @@ export async function getJobMatches(userId: string): Promise<JobMatchView[]> {
           id: job._id.toString(),
           role: str(job.role) || str(job.title),
           company: str(job.company),
+          companyId: job.companyId instanceof ObjectId ? job.companyId.toString() : "",
           match: score,
           location: str(job.location),
           type: str(job.type) || "Full-time",
@@ -303,10 +327,12 @@ export interface SavedJobView {
   jobId: string;
   role: string;
   company: string;
+  companyId: string;
   match: number;
   location: string;
   salary: string;
   saved: string;
+  requiredSkills: string[];
 }
 
 export async function getSavedJobs(userId: string): Promise<SavedJobView[]> {
@@ -355,10 +381,12 @@ export async function getSavedJobs(userId: string): Promise<SavedJobView[]> {
         jobId: job._id.toString(),
         role: str(job.role) || str(job.title),
         company: str(job.company),
+        companyId: job.companyId instanceof ObjectId ? job.companyId.toString() : "",
         match: matchByJob.get(job._id.toString()) ?? liveScore(job),
         location: str(job.location),
         salary: str(job.salary),
         saved: timeAgo(s.createdAt),
+        requiredSkills: Array.isArray(job.requiredSkills) ? job.requiredSkills.map(String) : [],
       });
     }
     return out;
@@ -370,6 +398,7 @@ export async function getSavedJobs(userId: string): Promise<SavedJobView[]> {
 export type ApplicationStatus =
   | "Applied"
   | "In review"
+  | "Shortlisted"
   | "Interview"
   | "Offer"
   | "Rejected";
@@ -378,12 +407,17 @@ export interface ApplicationView {
   id: string;
   role: string;
   company: string;
+  companyId: string;
   applied: string;
   status: ApplicationStatus;
+  resumeName?: string;
+  location?: string;
+  type?: string;
+  salary?: string;
 }
 
 const APP_STATUSES: ApplicationStatus[] = [
-  "Applied", "In review", "Interview", "Offer", "Rejected",
+  "Applied", "In review", "Shortlisted", "Interview", "Offer", "Rejected",
 ];
 
 export async function getApplications(
@@ -403,15 +437,21 @@ export async function getApplications(
     const out: ApplicationView[] = [];
     for (const a of apps) {
       const job = a.jobId ? jobs.get(a.jobId.toString()) : null;
-      const status = (APP_STATUSES as string[]).includes(str(a.status))
-        ? (a.status as ApplicationStatus)
-        : "Applied";
+      // Same pipeline the company uses (lib/company/constants); "Selected" is a legacy spelling of an offer.
+      const raw = str(a.status) === "Selected" ? "Offer" : str(a.status);
+      const status = (APP_STATUSES as string[]).includes(raw) ? (raw as ApplicationStatus) : "Applied";
+      const rawRes = a.resume as { name?: unknown; type?: unknown } | undefined;
       out.push({
         id: a._id.toString(),
         role: str(a.role) || str(job?.role) || str(job?.title),
         company: str(a.company) || str(job?.company),
+        companyId: job?.companyId instanceof ObjectId ? job.companyId.toString() : "",
         applied: shortDate(a.createdAt ?? a.appliedAt),
         status,
+        resumeName: str(rawRes?.name) || "JEMS Profile Resume",
+        location: str(job?.location) || "Remote",
+        type: str(job?.type) || "Full-time",
+        salary: str(job?.salary) || "",
       });
     }
     return out;
@@ -508,8 +548,9 @@ export async function getLearningPaths(
       return {
         id: r._id.toString(),
         source: roadmapId ? ("roadmap" as const) : ("path" as const),
-        // A roadmap's path opens its lessons, quick checks and module tests.
-        href: roadmapId ? `/student/learning/${roadmapId}` : null,
+        // A roadmap's path opens its lessons, quick checks and module tests;
+        // any other path starts an AI roadmap for its skill, which becomes one.
+        href: roadmapId ? `/student/learning/${roadmapId}` : `/student/roadmap/ai?skill=${encodeURIComponent(str(r.title))}`,
         title: str(r.title),
         category: str(r.category),
         level: str(r.level) || "Beginner",
@@ -646,6 +687,28 @@ export async function getStudentResume(
     return {
       versions,
       atsScore: typeof doc.atsScore === "number" ? doc.atsScore : null,
+    };
+  });
+}
+
+export interface ResumeSummary {
+  id: string;
+  name: string;
+  /** The resume's headline (e.g. "Frontend Developer"). */
+  title: string;
+  skills: string[];
+}
+
+/** Lightweight list of the student's built resumes, for choosing one when applying. */
+export async function getResumeSummaries(userId: string): Promise<ResumeSummary[]> {
+  const doc = await getStudentResume(userId);
+  return (doc?.versions ?? []).map((v) => {
+    const data = (v.data ?? {}) as { header?: { title?: unknown }; skills?: { name?: unknown }[] };
+    return {
+      id: v.id,
+      name: v.name,
+      title: str(data.header?.title),
+      skills: (Array.isArray(data.skills) ? data.skills : []).map((x) => str(x?.name)).filter(Boolean),
     };
   });
 }

@@ -47,6 +47,11 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  serverExternalPackages: ["mongodb"],
+  experimental: {
+    cpus: 2,
+    workerThreads: false,
+  },
   turbopack: {
     root: import.meta.dirname,
   },

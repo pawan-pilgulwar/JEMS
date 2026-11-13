@@ -10,6 +10,7 @@ import {
   LifeBuoy,
   type LucideIcon,
   Mic,
+  Presentation,
   Route,
   Settings,
   Target,
@@ -37,6 +38,7 @@ export const NAVIGATE: NavItem[] = [
   { label: "Mock Interviews", icon: Mic, href: "/student/interviews" },
   { label: "Roadmap", icon: Route, href: "/student/roadmap" },
   { label: "Learning Paths", icon: GraduationCap, href: "/student/learning" },
+  { label: "Industry Programs", icon: Presentation, href: "/student/programs" },
 ];
 
 export const JOBS: NavItem[] = [

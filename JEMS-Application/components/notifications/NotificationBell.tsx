@@ -2,12 +2,60 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Bell, BriefcaseBusiness, CircleAlert, CircleCheck, Info, LoaderCircle, X } from "lucide-react";
+import { Bell, BriefcaseBusiness, CircleAlert, CircleCheck, Info, X } from "lucide-react";
 import type { AiTaskView } from "@/lib/ai-tasks/types";
 import type { NotificationKind, NotificationView } from "@/lib/db/notifications";
 
 const FAST_MS = 5_000;
 const SLOW_MS = 30_000;
+
+// One shared AudioContext: browsers cap how many can exist, and a context
+// only produces sound after it has been resumed inside a user gesture.
+let audioCtx: AudioContext | null = null;
+
+function getAudioContext(): AudioContext | null {
+  if (audioCtx) return audioCtx;
+  const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+  audioCtx = Ctx ? new Ctx() : null;
+  return audioCtx;
+}
+
+/** Resumes the shared context on the first click / key press so later chimes are audible. */
+function unlockAudioOnFirstGesture(): () => void {
+  const unlock = () => {
+    getAudioContext()?.resume().catch(() => {});
+    window.removeEventListener("pointerdown", unlock);
+    window.removeEventListener("keydown", unlock);
+  };
+  window.addEventListener("pointerdown", unlock);
+  window.addEventListener("keydown", unlock);
+  return unlock;
+}
+
+/** Plays a soft 2-tone chime (Web Audio, no asset). Silent if audio is still locked. */
+function playNotificationSound() {
+  try {
+    const ctx = getAudioContext();
+    if (!ctx || ctx.state !== "running") return;
+    const now = ctx.currentTime;
+    const playTone = (freq: number, start: number, duration: number) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(freq, start);
+      gain.gain.setValueAtTime(0.15, start);
+      gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(start);
+      osc.stop(start + duration);
+    };
+    playTone(659.25, now, 0.35); // E5
+    playTone(830.61, now + 0.1, 0.5); // G#5
+  } catch {
+    // Audio is a nicety; never let it break the bell.
+  }
+}
 
 function timeAgo(iso: string) {
   const m = Math.floor((Date.now() - new Date(iso).getTime()) / 60_000);
@@ -25,8 +73,8 @@ const KIND_ICON: Record<NotificationKind, { icon: typeof Bell; tone: string }> =
 };
 
 /**
- * Top-bar bell: in-progress AI tasks (with live progress) and notifications.
- * Polls fast while something is running, slowly otherwise. When a new
+ * Top-bar bell: notifications only — no in-progress loader. Polls fast while
+ * an AI task is running, slowly otherwise. When a new
  * notification arrives after the first load, a toast surfaces it wherever
  * the user is in the app — that's how background AI results "report back".
  */
@@ -35,7 +83,6 @@ export default function NotificationBell() {
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<NotificationView[]>([]);
   const [unread, setUnread] = useState(0);
-  const [active, setActive] = useState<AiTaskView[]>([]);
   const [toast, setToast] = useState<NotificationView | null>(null);
   const known = useRef<Set<string> | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -53,12 +100,14 @@ export default function NotificationBell() {
         // First load only records what exists; later polls toast what's new.
         if (known.current) {
           const fresh = data.notifications.find((n) => !n.read && !known.current!.has(n.id));
-          if (fresh) setToast(fresh);
+          if (fresh) {
+            setToast(fresh);
+            playNotificationSound();
+          }
         }
         known.current = new Set(data.notifications.map((n) => n.id));
         setItems(data.notifications);
         setUnread(data.unread);
-        setActive(data.activeTasks);
         busy = data.activeTasks.length > 0;
       }
     } catch {
@@ -66,6 +115,8 @@ export default function NotificationBell() {
     }
     timer.current = setTimeout(() => pollRef.current(), busy ? FAST_MS : SLOW_MS);
   }, []);
+
+  useEffect(() => unlockAudioOnFirstGesture(), []);
 
   useEffect(() => {
     pollRef.current = poll;
@@ -115,19 +166,19 @@ export default function NotificationBell() {
     }
   };
 
-  const badge = unread + active.length;
+  const badge = unread;
 
   return (
     <div className="relative" ref={ref}>
       <button
         type="button"
-        aria-label={badge ? `Notifications (${badge} new or in progress)` : "Notifications"}
+        aria-label={badge ? `Notifications (${badge} new)` : "Notifications"}
         aria-haspopup="dialog"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
         className="relative flex h-9 w-9 items-center justify-center rounded-lg text-mediumgray transition-colors hover:bg-surface hover:text-navy"
       >
-        {active.length > 0 ? <LoaderCircle className="h-5 w-5 animate-spin text-slate" /> : <Bell className="h-5 w-5" />}
+        <Bell className="h-5 w-5" />
         {unread > 0 && (
           <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-orange px-1 text-[10px] font-bold text-white ring-2 ring-white">
             {unread > 9 ? "9+" : unread}
@@ -152,24 +203,7 @@ export default function NotificationBell() {
           </div>
 
           <div className="max-h-[26rem] overflow-y-auto">
-            {active.length > 0 && (
-              <div className="border-b border-lightgray bg-surface-2/60 px-4 py-2.5">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-mediumgray">In progress</p>
-                <ul className="mt-1.5 space-y-2">
-                  {active.map((t) => (
-                    <li key={t.id} className="flex items-start gap-2.5">
-                      <LoaderCircle className="mt-0.5 h-4 w-4 shrink-0 animate-spin text-slate" />
-                      <span className="min-w-0">
-                        <span className="block truncate text-sm font-medium text-navy">{t.label}</span>
-                        <span className="block text-xs text-mediumgray">{t.progress || (t.status === "queued" ? "Queued" : "Working…")}</span>
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            {items.length === 0 && active.length === 0 ? (
+            {items.length === 0 ? (
               <p className="px-4 py-8 text-center text-sm text-mediumgray">You&apos;re all caught up.</p>
             ) : (
               <ul className="divide-y divide-lightgray">

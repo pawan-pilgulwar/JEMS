@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { isEmailLike, evaluatePassword } from "@/components/signup/password";
 import { hashPassword } from "@/lib/auth/password";
+import { resolveInstitution } from "@/lib/db/org-profiles";
 import { createStudent, getUserByEmail } from "@/lib/db/users";
 import { readJsonLimited } from "@/lib/http";
 import { clientIp, rateLimit, tooManyRequests } from "@/lib/rate-limit";
@@ -50,6 +51,12 @@ export async function POST(request: Request) {
     );
   }
 
+  // Optional: link to a registered institution so it can follow the student's progress.
+  const institution = await resolveInstitution(asString(body.institutionId).trim());
+  if (institution === undefined) {
+    return NextResponse.json({ error: "Pick your institution from the list." }, { status: 400 });
+  }
+
   try {
     await createStudent({
       name,
@@ -61,6 +68,7 @@ export async function POST(request: Request) {
         targetRole: asString(body.targetRole),
         learningStyle: asString(body.learningStyle),
         yearsOfExperience: asString(body.yearsOfExperience),
+        ...(institution ? { institution: institution.name, institutionId: institution.id } : {}),
       },
     });
   } catch {

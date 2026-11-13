@@ -3,6 +3,7 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import ProfilePage from "@/components/dashboard/student/ProfilePage";
+import { listInstitutions } from "@/lib/db/org-profiles";
 import { getPortfolio } from "@/lib/db/portfolio";
 import {
   getApplications,
@@ -25,13 +26,14 @@ export default async function StudentProfilePage({
   if (!session?.user?.id) redirect("/login");
   const userId = session.user.id;
 
-  const [profile, apps, matches, interviews, portfolio, progress, { tab }] = await Promise.all([
+  const [profile, apps, matches, interviews, portfolio, progress, institutions, { tab }] = await Promise.all([
     getStudentProfile(userId),
     getApplications(userId),
     getJobMatches(userId),
     getMockInterviews(userId),
     getPortfolio(userId),
     getProgress(userId),
+    listInstitutions(),
     searchParams,
   ]);
   if (!profile || !portfolio) redirect("/login");
@@ -50,6 +52,7 @@ export default async function StudentProfilePage({
       portfolio={portfolio}
       shareUrl={shareUrl}
       initialTab={tab === "portfolio" ? "Portfolio" : "Profile"}
+      institutions={institutions}
       stats={{
         applications: apps.length,
         matches: matches.length,

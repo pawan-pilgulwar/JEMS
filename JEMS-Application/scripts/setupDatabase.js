@@ -35,6 +35,11 @@ async function setupDatabase() {
       'industryPrograms',
       'collaborations',
       'collaborationInterests',
+      'programEnrollments',
+      'contactMessages',
+      'newsletterSubscribers',
+      'learningResources',
+      'applicationResumes',
       'institutionProfiles',
       'facultyProfiles',
       'jobPostings',
@@ -134,8 +139,19 @@ async function setupDatabase() {
     await db.collection('industryPrograms').createIndex({ companyId: 1 });
     await db.collection('collaborations').createIndex({ type: 1 });
     await db.collection('collaborationInterests').createIndex({ userId: 1, collaborationId: 1 }, { unique: true });
+    await db.collection('collaborationInterests').createIndex({ collaborationId: 1 });
+    await db.collection('programEnrollments').createIndex({ programId: 1, studentId: 1 }, { unique: true });
+    await db.collection('programEnrollments').createIndex({ studentId: 1 });
+    await db.collection('applicationResumes').createIndex({ applicationId: 1 });
+    // Partial: older rows written before the skill::topic key existed have no `key`.
+    await db.collection('learningResources').createIndex({ key: 1 }, { unique: true, partialFilterExpression: { key: { $exists: true } } });
+    await db.collection('newsletterSubscribers').createIndex({ email: 1 }, { unique: true });
+    await db.collection('contactMessages').createIndex({ createdAt: -1 });
     await db.collection('institutionProfiles').createIndex({ userId: 1 }, { unique: true });
     await db.collection('facultyProfiles').createIndex({ userId: 1 }, { unique: true });
+    // Institution membership lookups (institution portal + faculty dashboards).
+    await db.collection('facultyProfiles').createIndex({ institutionId: 1 });
+    await db.collection('studentProfiles').createIndex({ institutionId: 1 });
     await db.collection('jobPostings').createIndex({ requiredSkills: 1 });
     console.log('  ✓ platform collections');
 

@@ -24,6 +24,9 @@ export interface StudentProfileInput {
   targetRole?: string;
   learningStyle?: string;
   yearsOfExperience?: string;
+  /** Registered institution picked at signup (name + institution account id). */
+  institution?: string;
+  institutionId?: ObjectId;
 }
 
 async function users() {

@@ -371,7 +371,7 @@ export default function CareerAnalysis({
                     </li>
                   ))}
                 </ul>
-                <Link href="/student/learning" className="mt-4 inline-flex items-center gap-1 text-sm font-semibold text-slate hover:underline">All learning programs <ArrowRight className="h-4 w-4" /></Link>
+                <Link href="/student/programs" className="mt-4 inline-flex items-center gap-1 text-sm font-semibold text-slate hover:underline">All industry programs <ArrowRight className="h-4 w-4" /></Link>
               </Card>
 
               {/* 4. Assessment */}

@@ -1,18 +1,28 @@
 import type { Metadata } from "next";
 import Programs from "@/components/company/Programs";
 import { requireRole } from "@/lib/auth/require-role";
-import { listCollaborations } from "@/lib/db/collaborations";
-import { getCompanyContext, listPrograms } from "@/lib/db/company";
+import { listCompanyCollaborations } from "@/lib/db/collaborations";
+import { getCompanyContext } from "@/lib/db/company";
+import { listCompanyProgramsWithApplicants } from "@/lib/db/programs";
 
 export const metadata: Metadata = { title: "Programs — Jems" };
 
-export default async function ProgramsPage() {
+/** `?tab=collaborations&item=<id>` / `?program=<id>` deep-link from notifications. */
+export default async function ProgramsPage({ searchParams }: { searchParams: Promise<{ tab?: string; item?: string; program?: string }> }) {
   const session = await requireRole("company");
-  const [company, programs, all] = await Promise.all([
+  const { tab, item, program } = await searchParams;
+  const [company, programs, collaborations] = await Promise.all([
     getCompanyContext(session.user.id),
-    listPrograms(session.user.id),
-    listCollaborations(session.user.id),
+    listCompanyProgramsWithApplicants(session.user.id),
+    listCompanyCollaborations(session.user.id),
   ]);
-  const mine = all.filter((c) => c.company === (company?.name ?? ""));
-  return <Programs company={company?.name ?? "Company"} programs={programs} collaborations={mine} />;
+  return (
+    <Programs
+      company={company?.name ?? "Company"}
+      programs={programs}
+      collaborations={collaborations}
+      initialTab={tab === "collaborations" ? "collaboration" : "program"}
+      focus={item ?? program ?? null}
+    />
+  );
 }

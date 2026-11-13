@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
@@ -19,6 +20,27 @@ const company = [
 
 /** Site footer — always visible (authenticated and not). */
 export default function Footer() {
+  const [state, setState] = useState<"idle" | "sending" | "done" | "error">("idle");
+  const [message, setMessage] = useState("");
+
+  const subscribe = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const form = e.currentTarget;
+    const email = String(new FormData(form).get("email") ?? "");
+    setState("sending");
+    try {
+      const res = await fetch("/api/contact", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind: "newsletter", email }) });
+      const out = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) throw new Error(out.error || "Could not subscribe.");
+      form.reset();
+      setState("done");
+      setMessage("You're on the list — tips arrive weekly.");
+    } catch (err) {
+      setState("error");
+      setMessage(err instanceof Error ? err.message : "Could not subscribe.");
+    }
+  };
+
   return (
     <footer className="relative z-10 bg-navy text-white">
       <div className="mx-auto max-w-7xl px-4 pb-10 pt-16 sm:px-6 lg:px-8">
@@ -29,8 +51,9 @@ export default function Footer() {
             <p className="mt-6 max-w-sm text-[15px] leading-7 text-white/65">
               The education-to-employment platform where students verify skills, companies hire on evidence, and institutions see the whole pipeline.
             </p>
-            <form onSubmit={(e) => e.preventDefault()} className="mt-7 flex max-w-md flex-col gap-3 sm:flex-row">
+            <form onSubmit={subscribe} className="mt-7 flex max-w-md flex-col gap-3 sm:flex-row">
               <input
+                name="email"
                 type="email"
                 required
                 placeholder="you@example.com"
@@ -39,12 +62,16 @@ export default function Footer() {
               />
               <button
                 type="submit"
+                disabled={state === "sending"}
                 className="group inline-flex h-11 shrink-0 items-center justify-center gap-1.5 rounded-full bg-cta-gradient px-6 text-sm font-semibold text-white shadow-[var(--shadow-cta)] transition-transform duration-200 hover:-translate-y-0.5 active:translate-y-0"
               >
                 Weekly tips
                 <ArrowRight className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-0.5" />
               </button>
             </form>
+            {(state === "done" || state === "error") && (
+              <p role="status" className={`mt-2 text-xs ${state === "done" ? "text-emerald-300" : "text-red-300"}`}>{message}</p>
+            )}
           </div>
 
           {/* Links */}

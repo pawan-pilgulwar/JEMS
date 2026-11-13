@@ -13,7 +13,6 @@ import {
   Mail,
   MapPin,
   Phone,
-  Send,
   Target,
   Trash2,
   Upload,
@@ -21,6 +20,7 @@ import {
 import DashboardShell, { DashboardContainer } from "./DashboardShell";
 import PortfolioView from "@/components/portfolio/PortfolioView";
 import type { Portfolio } from "@/lib/db/portfolio";
+import type { InstitutionOption } from "@/lib/db/org-profiles";
 import type { StudentProfileView } from "@/lib/db/student-data";
 
 type IconType = React.ComponentType<{ className?: string }>;
@@ -58,7 +58,6 @@ const TAB_LINKS: Record<string, string> = {
 const SOCIALS = [
   { Icon: Phone, tone: "bg-emerald", label: "Call", href: (_p: StudentProfileView, f: Form) => (f.phone ? `tel:${f.phone.replace(/\s+/g, "")}` : "") },
   { Icon: Mail, tone: "bg-orange", label: "Email", href: (p: StudentProfileView) => (p.email ? `mailto:${p.email}` : "") },
-  { Icon: Send, tone: "bg-slate", label: "Telegram", href: (_p: StudentProfileView, f: Form) => (f.telegram ? `https://t.me/${f.telegram.replace(/^@/, "")}` : "") },
 ];
 
 /** A labelled, controlled text input matching the form style. */
@@ -134,11 +133,10 @@ type Form = {
   website: string;
   linkedin: string;
   github: string;
-  whatsapp: string;
-  telegram: string;
   phone: string;
   targetRole: string;
   avatar: string;
+  institutionId: string;
 };
 
 function toForm(p: StudentProfileView): Form {
@@ -154,11 +152,10 @@ function toForm(p: StudentProfileView): Form {
     website: p.website,
     linkedin: p.linkedin,
     github: p.github,
-    whatsapp: p.whatsapp,
-    telegram: p.telegram,
     phone: p.phone,
     targetRole: p.targetRole,
     avatar: p.avatar || avatarUrl("Felix"),
+    institutionId: p.institutionId,
   };
 }
 
@@ -168,12 +165,15 @@ export default function ProfilePage({
   shareUrl,
   stats,
   initialTab = "Profile",
+  institutions,
 }: {
   profile: StudentProfileView;
   portfolio: Portfolio;
   shareUrl: string;
   stats: ProfileStats;
   initialTab?: LocalTab;
+  /** Registered institutions for the "your institution" picker. */
+  institutions: InstitutionOption[];
 }) {
   const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
@@ -190,6 +190,7 @@ export default function ProfilePage({
   const [saved, setSaved] = useState<Form>(() => toForm(profile));
   const [form, setForm] = useState<Form>(() => toForm(profile));
   const [status, setStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [saveError, setSaveError] = useState("");
 
   const set = <K extends keyof Form>(key: K, value: Form[K]) => {
     setForm((f) => ({ ...f, [key]: value }));
@@ -224,7 +225,7 @@ export default function ProfilePage({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form),
       });
-      if (!res.ok) throw new Error("save failed");
+      if (!res.ok) throw new Error(((await res.json().catch(() => ({}))) as { error?: string }).error || "Couldn't save — try again.");
       const { profile: updated } = (await res.json()) as {
         profile: StudentProfileView;
       };
@@ -234,7 +235,8 @@ export default function ProfilePage({
       setStatus("saved");
       // Refresh the layout so the sidebar / top-bar pick up the new name.
       router.refresh();
-    } catch {
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : "Couldn't save — try again.");
       setStatus("error");
     }
   };
@@ -440,6 +442,22 @@ export default function ProfilePage({
                   <Field label="Last Name" value={form.lastName} onChange={(v) => set("lastName", v)} />
                   <Field label="Display Name Publicly as" value={form.displayName} onChange={(v) => set("displayName", v)} />
                   <Field label="Target Role" value={form.targetRole} onChange={(v) => set("targetRole", v)} placeholder="Frontend Developer" />
+                  <label className="block sm:col-span-2">
+                    <span className="mb-1.5 block text-sm font-medium text-navy">Institution</span>
+                    <select
+                      value={form.institutionId}
+                      onChange={(e) => set("institutionId", e.target.value)}
+                      className="h-11 w-full rounded-xl border border-lightgray bg-white px-3 text-sm text-navy outline-none transition-colors focus:border-slate focus:ring-2 focus:ring-slate/15"
+                    >
+                      <option value="">Not part of an institution</option>
+                      {institutions.map((i) => (
+                        <option key={i.id} value={i.id}>{i.name}{i.location ? ` — ${i.location}` : ""}</option>
+                      ))}
+                    </select>
+                    <span className="mt-1 block text-[11px] text-mediumgray">
+                      Your institution and its faculty can see your progress, skills and applications to support your placement.
+                    </span>
+                  </label>
                 </div>
               </div>
 
@@ -467,8 +485,6 @@ export default function ProfilePage({
                     onChange={(v) => set("github", v)}
                     placeholder="https://github.com/your-username"
                   />
-                  <Field label="WhatsApp" value={form.whatsapp} onChange={(v) => set("whatsapp", v)} placeholder="@your-handle" />
-                  <Field label="Telegram" value={form.telegram} onChange={(v) => set("telegram", v)} placeholder="@your-handle" />
                 </div>
               </div>
 
@@ -505,7 +521,7 @@ export default function ProfilePage({
                 )}
                 {status === "error" && (
                   <span className="mr-auto text-sm font-medium text-orange">
-                    Couldn&apos;t save — try again.
+                    {saveError}
                   </span>
                 )}
                 <button

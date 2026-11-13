@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import JobMatches from "@/components/jobs/JobMatches";
 import { getAppliedJobIds, getStudentSettings } from "@/lib/db/student-actions";
-import { getJobMatches, getSavedJobs } from "@/lib/db/student-data";
+import { getJobMatches, getResumeSummaries, getSavedJobs } from "@/lib/db/student-data";
 
 export const metadata: Metadata = {
   title: "Job Matches — Jems",
@@ -14,11 +14,12 @@ export default async function JobsPage() {
   if (!session?.user?.id) redirect("/login");
   const userId = session.user.id;
 
-  const [jobs, saved, applied, settings] = await Promise.all([
+  const [jobs, saved, applied, settings, resumes] = await Promise.all([
     getJobMatches(userId),
     getSavedJobs(userId),
     getAppliedJobIds(userId),
     getStudentSettings(userId),
+    getResumeSummaries(userId),
   ]);
   const initialSaved = saved.map((s) => s.jobId);
 
@@ -28,6 +29,7 @@ export default async function JobsPage() {
       initialSaved={initialSaved}
       initialApplied={applied}
       remoteOnly={settings.jobPrefs.remoteOnly}
+      studentResumes={resumes}
     />
   );
 }

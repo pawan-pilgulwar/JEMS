@@ -1,6 +1,8 @@
 import { ObjectId, type Db } from "mongodb";
 import { getDatabase } from "@/lib/db/mongodb";
 import type { CurriculumResponse } from "@/lib/agent/types";
+import { institutionMemberFilter } from "@/lib/db/org-profiles";
+import { institutionMatcher, skillsFromProfile, targetRoleFromProfile } from "@/lib/db/people";
 
 export interface FacultyContext {
   userId: string;
@@ -33,7 +35,6 @@ export interface FacultyDashboardData {
 }
 
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
-const norm = (s: string) => s.trim().toLowerCase();
 
 async function getDb(): Promise<Db> {
   return getDatabase();
@@ -52,9 +53,10 @@ export async function getFacultyContext(userId: string): Promise<FacultyContext 
     return {
       userId,
       name: str(user.name) || "Faculty Member",
-      department: str(profile?.department) || "Computer Science & Engineering",
-      institution: str(profile?.institution) || "PES University",
-      designation: str(profile?.designation) || "Associate Professor",
+      // No invented defaults: an incomplete profile shows as such rather than as another institution.
+      department: str(profile?.department) || "Department not set",
+      institution: str(profile?.institution),
+      designation: str(profile?.designation),
     };
   } catch (err) {
     console.error("[faculty] getFacultyContext failed:", err);
@@ -70,11 +72,14 @@ export async function getFacultyDashboard(userId: string): Promise<FacultyDashbo
     const db = await getDb();
     const uid = new ObjectId(userId);
 
-    // Query students in this institution/department (or all students in demo)
-    let studentProfiles = await db.collection("studentProfiles").find({ institution: faculty.institution }).toArray();
-    if (studentProfiles.length === 0) {
-      studentProfiles = await db.collection("studentProfiles").find({}).toArray();
-    }
+    // Students of the faculty member's own institution — same membership rule as the institution portal.
+    const fac = await db.collection("facultyProfiles").findOne({ userId: uid }, { projection: { institutionId: 1 } });
+    const filter = fac?.institutionId instanceof ObjectId
+      ? institutionMemberFilter(fac.institutionId, faculty.institution)
+      : faculty.institution
+        ? { institution: institutionMatcher(faculty.institution) }
+        : null;
+    const studentProfiles = filter ? await db.collection("studentProfiles").find(filter).toArray() : [];
     const studentUserIds = studentProfiles.map((p) => p.userId as ObjectId).filter(Boolean);
 
     const [users, analytics, progress, jobs, collaborations, interests, reviewDoc] = await Promise.all([
@@ -95,28 +100,22 @@ export async function getFacultyDashboard(userId: string): Promise<FacultyDashbo
     let totalVerified = 0;
     const n = studentProfiles.length;
 
-    const recentStudentActivity = studentProfiles.slice(0, 10).map((p) => {
+    // Aggregate over the whole cohort; only the activity list is capped.
+    const rows = studentProfiles.map((p) => {
       const sid = String(p.userId);
       const u = userById.get(sid);
-      const skills = Array.isArray(p.skills) ? p.skills : [];
-      const verified = skills.filter((s: { verified?: unknown }) => Boolean(s?.verified));
+      const verified = skillsFromProfile(p).filter((s) => s.verified);
       totalVerified += verified.length;
-
-      for (const s of verified) {
-        const sName = str(s?.name);
-        if (sName) {
-          skillCounts.set(sName, (skillCounts.get(sName) ?? 0) + 1);
-        }
-      }
-
+      for (const s of verified) skillCounts.set(s.name, (skillCounts.get(s.name) ?? 0) + 1);
       return {
         studentId: sid,
         name: str(p.displayName) || str(u?.name) || str(u?.email) || "Student",
-        targetRole: str(p.targetRole) || "Software Engineer",
+        targetRole: targetRoleFromProfile(p),
         readiness: readinessById.get(sid) ?? 0,
         verifiedSkills: verified.length,
       };
     });
+    const recentStudentActivity = rows.sort((a, b) => b.readiness - a.readiness).slice(0, 10);
 
     const departmentSkills = Array.from(skillCounts.entries())
       .map(([skill, count]) => ({

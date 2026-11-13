@@ -75,6 +75,7 @@ async function seed() {
         db.collection("jobApplications").deleteMany({ studentId: { $in: demoIds } }),
         db.collection("studentAnalyses").deleteMany({ studentId: { $in: demoIds } }),
         db.collection("collaborationInterests").deleteMany({ userId: { $in: demoIds } }),
+        db.collection("programEnrollments").deleteMany({ studentId: { $in: demoIds } }),
         db.collection("users").deleteMany({ _id: { $in: demoIds } }),
       ]);
     }
@@ -163,6 +164,7 @@ async function seed() {
     await db.collection("facultyProfiles").insertOne({
       userId: facRes.insertedId,
       institution: "PES University",
+      institutionId: instRes.insertedId,
       department: "Computer Science",
       designation: "Associate Professor",
       interests: ["Cloud Computing", "Distributed Systems", "Software Engineering"],
@@ -199,7 +201,7 @@ async function seed() {
       const sid = u.insertedId;
       await db.collection("studentProfiles").insertOne({
         userId: sid, displayName: name, displayRole: "Student", location: "Bengaluru, India",
-        experienceLevel: "Entry level", targetRole, institution: "PES University",
+        experienceLevel: "Entry level", targetRole, institution: "PES University", institutionId: instRes.insertedId,
         skills: skills.map((s, k) => ({ name: s, level: 55 + ((k * 13) % 35), verified: k < passed.length })),
         goals: { careerPath, careerTitle: targetRole, targetPackage: String(6 + (i % 6)), targetCompany: i % 3 === 0 ? "Capgemini" : "", setAt: daysAgo(30) },
         createdAt: daysAgo(50 - i), updatedAt: now,
@@ -221,7 +223,7 @@ async function seed() {
     console.log(`✓ ${cohort.length} cohort students`);
 
     // ── Industry learning programs ───────────────────────────────
-    await db.collection("industryPrograms").insertMany(
+    const programRes = await db.collection("industryPrograms").insertMany(
       [
         { company: "Capgemini", companyId, title: "Java & Spring Boot Bootcamp", type: "Training", skills: ["Java", "Spring Boot", "REST APIs"], duration: "6 weeks", mode: "Online · live", seats: 60, startsAt: daysAhead(12) },
         { company: "Capgemini", companyId, title: "Cloud Foundations (AWS)", type: "Certification", skills: ["AWS", "Linux", "Networking"], duration: "4 weeks", mode: "Self-paced + exam", seats: 100, startsAt: daysAhead(5) },
@@ -232,11 +234,11 @@ async function seed() {
         { company: "Microsoft", title: "TypeScript for React Developers", type: "Workshop", skills: ["TypeScript", "React", "Testing"], duration: "1 day", mode: "Online · live", seats: 300, startsAt: daysAhead(14) },
         { company: "Razorpay", title: "Node.js & Payments APIs Deep-dive", type: "Training", skills: ["Node.js", "Express.js", "REST APIs", "Security"], duration: "3 weeks", mode: "Online", seats: 80, startsAt: daysAhead(16) },
         { company: "Google", title: "Docker & Kubernetes Essentials", type: "Certification", skills: ["Docker", "Kubernetes", "CI/CD"], duration: "4 weeks", mode: "Self-paced", seats: 1000, startsAt: daysAhead(2) },
-      ].map((p) => ({ ...p, demo: true, createdAt: now })),
+      ].map((p) => ({ ...p, status: "open", demo: true, createdAt: now })),
     );
 
     // ── Industry ↔ academia collaborations ───────────────────────
-    await db.collection("collaborations").insertMany(
+    const collabRes = await db.collection("collaborations").insertMany(
       [
         { company: "Capgemini", companyId, title: "FDP: Cloud-Native Architecture for Educators", type: "FDP", domain: ["Cloud Computing", "Microservices"], duration: "5 days", startsAt: daysAhead(18), location: "Bengaluru campus", seats: 30, description: "Hands-on faculty development program covering AWS, containers and CI/CD, with course material faculty can reuse." },
         { company: "Capgemini", companyId, title: "Faculty Industrial Immersion (Summer)", type: "Faculty Internship", domain: ["Software Engineering", "Agile Delivery"], duration: "4 weeks", startsAt: daysAhead(45), location: "Pune delivery centre", seats: 10, description: "Faculty embed with a live delivery team to align teaching with current engineering practice." },
@@ -246,16 +248,35 @@ async function seed() {
         { company: "Razorpay", title: "Industrial Training: Payments Systems", type: "Industrial Training", domain: ["Fintech", "Backend"], duration: "2 weeks", startsAt: daysAhead(40), location: "Bengaluru", seats: 15, description: "Training for faculty and final-year students on real payment infrastructure." },
         { company: "Microsoft", title: "Innovation Challenge: Campus AI Hackathon", type: "Innovation Challenge", domain: ["AI/ML", "Cloud"], duration: "48 hours", startsAt: daysAhead(35), location: "Hybrid", seats: 500, description: "Faculty-mentored student teams build on Azure credits; winners get internships." },
         { company: "Google", title: "Live Industry Project: Accessibility Audit", type: "Live Project", domain: ["Frontend", "Accessibility"], duration: "6 weeks", startsAt: daysAhead(10), location: "Remote", seats: 25, description: "Student teams audit real products under faculty + engineer mentorship." },
-      ].map((c) => ({ ...c, demo: true, createdAt: now })),
+      ].map((c) => ({ ...c, status: "open", demo: true, createdAt: now })),
     );
     console.log("✓ Industry programs + collaborations");
+
+    // ── Program applications + faculty interest (so both portals show activity) ──
+    const programIds = Object.values(programRes.insertedIds);
+    const collabIds = Object.values(collabRes.insertedIds);
+    const cohortStudents = await db.collection("users").find({ demo: true, role: "student", email: /^student\d+@demo\.jems$/ }).project({ _id: 1 }).toArray();
+    const enrollStatuses = ["Applied", "Accepted", "Applied", "Waitlisted", "Accepted", "Applied"];
+    const enrollments = [];
+    cohortStudents.forEach((u, k) => {
+      for (const p of [programIds[k % 4], programIds[(k + 2) % programIds.length]]) {
+        if (enrollments.some((e) => String(e.programId) === String(p) && String(e.studentId) === String(u._id))) continue;
+        enrollments.push({ programId: p, studentId: u._id, companyId: programIds.indexOf(p) < 4 ? companyId : null, status: enrollStatuses[k % enrollStatuses.length], motivation: "", createdAt: daysAgo(6 - (k % 5)), updatedAt: now });
+      }
+    });
+    if (enrollments.length) await db.collection("programEnrollments").insertMany(enrollments);
+    await db.collection("collaborationInterests").insertMany([
+      { userId: facRes.insertedId, collaborationId: collabIds[0], status: "Accepted", createdAt: daysAgo(4), updatedAt: daysAgo(2) },
+      { userId: facRes.insertedId, collaborationId: collabIds[3], status: "Interested", createdAt: daysAgo(2) },
+    ]);
+    console.log(`✓ ${enrollments.length} program applications + faculty interest`);
 
     // ── Make the main demo student part of the cohort ────────────
     const demoStudent = await db.collection("users").findOne({ email: STUDENT_EMAIL });
     if (demoStudent) {
       await db.collection("studentProfiles").updateOne(
         { userId: demoStudent._id },
-        { $set: { institution: "PES University" } },
+        { $set: { institution: "PES University", institutionId: instRes.insertedId } },
       );
     }
 

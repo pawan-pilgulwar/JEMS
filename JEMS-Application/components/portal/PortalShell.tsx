@@ -4,14 +4,14 @@ import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signOut } from "next-auth/react";
-import { BarChart3, Briefcase, GraduationCap, Handshake, HelpCircle, LayoutDashboard, LogOut, type LucideIcon, Menu, Users, X } from "lucide-react";
+import { BarChart3, Briefcase, Building2, GraduationCap, Handshake, LayoutDashboard, LogOut, type LucideIcon, Menu, Trophy, UserCheck, UserRound, Users, X } from "lucide-react";
 import Logo from "@/components/Navbar/Logo";
 import NotificationBell from "@/components/notifications/NotificationBell";
-import { useTour } from "@/components/tour/TourProvider";
+import TourMenu from "@/components/tour/TourMenu";
 import type { TourId } from "@/components/tour/tours";
 
 /** Icon *names* — server layouts can't pass component functions to a client component. */
-const ICONS: Record<string, LucideIcon> = { BarChart3, Briefcase, GraduationCap, Handshake, LayoutDashboard, Users };
+const ICONS: Record<string, LucideIcon> = { BarChart3, Briefcase, Building2, GraduationCap, Handshake, LayoutDashboard, Trophy, UserCheck, UserRound, Users };
 
 export interface PortalNavItem {
   label: string;
@@ -41,7 +41,6 @@ export default function PortalShell({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
-  const { start: startTour } = useTour();
   const [open, setOpen] = useState(false);
   const initial = name.trim().charAt(0).toUpperCase() || "U";
   const current = nav.find((n) => pathname === n.href || pathname.startsWith(n.href + "/"));
@@ -114,17 +113,7 @@ export default function PortalShell({
           </nav>
           <div className="ml-auto flex items-center gap-1.5">
             <NotificationBell />
-            {tour && (
-              <button
-                type="button"
-                data-tour="help"
-                onClick={() => startTour(tour)}
-                className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-[13px] font-medium text-mediumgray transition-colors hover:bg-surface hover:text-navy"
-              >
-                <HelpCircle className="h-5 w-5" />
-                <span className="hidden sm:inline">Take the tour</span>
-              </button>
-            )}
+            {tour && <TourMenu tour={tour} label="Help" />}
           </div>
         </header>
         <main id="main" className="flex-1 px-4 py-6 sm:px-6 lg:px-8">

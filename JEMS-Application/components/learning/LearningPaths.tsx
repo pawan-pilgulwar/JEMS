@@ -110,6 +110,17 @@ export default function LearningPaths({ paths }: { paths: LearningPathView[] }) 
           </Card>
         )}
 
+        <Link
+          href="/student/programs"
+          className="flex items-center justify-between gap-3 rounded-xl border border-slate/20 bg-slate/5 px-4 py-3 text-sm transition-colors hover:border-slate"
+        >
+          <span>
+            <span className="font-semibold text-navy">Industry programs</span>
+            <span className="ml-2 text-mediumgray">Training & certifications from hiring companies that fill your skill gaps.</span>
+          </span>
+          <span className="shrink-0 text-xs font-semibold text-slate">Browse →</span>
+        </Link>
+
         {/* Filters */}
         <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] sm:mx-0 sm:flex-wrap sm:px-0 [&::-webkit-scrollbar]:hidden">
           {FILTERS.map((f) => (
@@ -166,14 +177,10 @@ export default function LearningPaths({ paths }: { paths: LearningPathView[] }) 
                 </div>
 
                 <div className="mt-auto">
-                  {p.href ? (
+                  {p.href && (
                     <Link href={p.href} className={CTA_CLASS}>
-                      {ctaLabel(p.progress)}
+                      {p.source === "roadmap" ? ctaLabel(p.progress) : "Build AI path"}
                     </Link>
-                  ) : (
-                    <button type="button" className={CTA_CLASS}>
-                      {ctaLabel(p.progress)}
-                    </button>
                   )}
                 </div>
               </Card>

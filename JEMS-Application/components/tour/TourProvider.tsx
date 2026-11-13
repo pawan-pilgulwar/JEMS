@@ -11,7 +11,10 @@ import {
 } from "react";
 import type { EventHandler, Step } from "react-joyride";
 import { TourTooltip } from "./TourTooltip";
+import { useLocalFlag } from "@/lib/local-flag";
 import { TOURS, type TourId } from "./tours";
+
+const TOUR_ENABLED_KEY = "jems.tour.enabled";
 
 // Joyride measures the DOM, so it's client-only.
 const Joyride = dynamic(
@@ -25,6 +28,8 @@ interface TourContextValue {
   stop: () => void;
   /** True once the tour has been finished or skipped on this browser. */
   hasSeen: (id: TourId) => boolean;
+  tourEnabled: boolean;
+  setTourEnabled: (enabled: boolean) => void;
 }
 
 const TourContext = createContext<TourContextValue | null>(null);
@@ -61,11 +66,25 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
   const [active, setActive] = useState<TourId | null>(null);
   // Bumped on every start so a re-run of the same tour remounts Joyride.
   const [runId, setRunId] = useState(0);
+  // Tours are off by default across every portal; the help menu's switch turns them back on.
+  const [tourEnabled, storeTourEnabled] = useLocalFlag(TOUR_ENABLED_KEY);
 
-  const start = useCallback((id: TourId) => {
-    setActive(id);
-    setRunId((n) => n + 1);
-  }, []);
+  const setTourEnabled = useCallback(
+    (enabled: boolean) => {
+      storeTourEnabled(enabled);
+      if (!enabled) setActive(null);
+    },
+    [storeTourEnabled],
+  );
+
+  const start = useCallback(
+    (id: TourId) => {
+      if (!tourEnabled) return;
+      setActive(id);
+      setRunId((n) => n + 1);
+    },
+    [tourEnabled],
+  );
 
   const stop = useCallback(() => setActive(null), []);
 
@@ -114,7 +133,10 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
     [active],
   );
 
-  const value = useMemo(() => ({ active, start, stop, hasSeen }), [active, start, stop, hasSeen]);
+  const value = useMemo(
+    () => ({ active, start, stop, hasSeen, tourEnabled, setTourEnabled }),
+    [active, start, stop, hasSeen, tourEnabled, setTourEnabled],
+  );
 
   return (
     <TourContext.Provider value={value}>

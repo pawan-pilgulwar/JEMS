@@ -28,8 +28,6 @@ const PROFILE_LIMITS: Record<keyof ProfileUpdate, number> = {
   website: 300,
   linkedin: 300,
   github: 300,
-  whatsapp: 80,
-  telegram: 80,
   phone: 40,
   targetRole: 80,
   // base64 data-URL avatars are bounded here; for production these belong in

@@ -10,13 +10,12 @@ import type { TourId } from "./tours";
  * available from the help button.
  */
 export default function TourAutostart({ tour, delayMs = 900 }: { tour: TourId; delayMs?: number }) {
-  const { start, hasSeen, active } = useTour();
+  const { start, hasSeen, active, tourEnabled } = useTour();
   useEffect(() => {
-    if (active || hasSeen(tour)) return;
+    // Only autostart if tours are explicitly toggled on by user
+    if (!tourEnabled || active || hasSeen(tour)) return;
     const t = window.setTimeout(() => start(tour), delayMs);
     return () => window.clearTimeout(t);
-    // Only on mount — re-running on `active` changes would re-arm the timer.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [active, hasSeen, tour, delayMs, tourEnabled, start]);
   return null;
 }

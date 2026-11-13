@@ -1,17 +1,21 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import Link from "next/link";
 import {
   AlertTriangle,
   Briefcase,
+  Building2,
   CheckCircle2,
   GraduationCap,
   Handshake,
+  Presentation,
   LoaderCircle,
   RefreshCw,
   ShieldCheck,
   Sparkles,
   Target,
+  Trophy,
   TrendingUp,
   Users,
   Zap,
@@ -97,6 +101,14 @@ export default function InstitutionDashboard({ data: initialData }: { data: Data
     }
   };
 
+  // Keep the numbers live: re-pull every minute while the tab is visible.
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (document.visibilityState === "visible") void refreshLive();
+    }, 60_000);
+    return () => clearInterval(id);
+  }, []);
+
   const runAiAnalysis = async () => {
     setAnalyzing(true);
     setAiError("");
@@ -123,6 +135,9 @@ export default function InstitutionDashboard({ data: initialData }: { data: Data
     { label: "Verified skills earned", value: k.verifiedSkills, sub: `${k.modulesPassed} roadmap modules passed`, icon: ShieldCheck },
     { label: "Applications", value: k.applications, sub: `${k.internshipApplications} to internships`, icon: Briefcase },
     { label: "Offers", value: k.offers, sub: `${k.placementRate}% of students placed`, icon: TrendingUp },
+    { label: "Students placed", value: data.placementStages.find((s) => s.stage === "Placed")?.count ?? 0, sub: `${data.placementStages.find((s) => s.stage === "In process")?.count ?? 0} more in interview stages`, icon: Trophy },
+    { label: "Faculty engaged", value: k.facultyEngaged, sub: `of ${k.faculty} faculty with industry interest`, icon: Handshake },
+    { label: "Program applications", value: k.programApplications, sub: "to industry training programs", icon: Presentation },
   ];
 
   const ratingColor =
@@ -162,8 +177,14 @@ export default function InstitutionDashboard({ data: initialData }: { data: Data
         </div>
       </div>
 
+      {k.students === 0 && (
+        <Card className="border-amber-200 bg-amber-50/60 p-4 text-sm text-amber-800">
+          No students are linked to <strong>{data.institution}</strong> yet. Students appear here once the institution on their profile matches this name exactly.
+        </Card>
+      )}
+
       {/* KPI tiles */}
-      <div data-tour="inst-kpis" className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
+      <div data-tour="inst-kpis" className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {tiles.map((t) => (
           <Card key={t.label} className="p-5">
             <div className="flex items-start justify-between">
@@ -320,14 +341,32 @@ export default function InstitutionDashboard({ data: initialData }: { data: Data
         </div>
       </div>
 
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+        <Card className="p-6">
+          <div className="flex items-start justify-between">
+            <Head icon={Trophy} title="Placement funnel" hint="Students by furthest application stage" />
+            <Link href="/institution/placements" className="text-xs font-semibold text-slate hover:underline">Placements →</Link>
+          </div>
+          <Bars rows={data.placementStages.map((s) => ({ label: s.stage, value: s.count }))} format={(v) => `${v} students`} />
+        </Card>
+        <Card className="p-6">
+          <Head icon={Building2} title="Top recruiters" hint="Companies your students applied to, by offers" />
+          <Bars rows={data.topRecruiters.map((r) => ({ label: r.company, value: r.applications, hint: `${r.offers} offer${r.offers === 1 ? "" : "s"}` }))} format={(v) => `${v} applications`} />
+        </Card>
+      </div>
+
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
         <Card data-tour="inst-interests" className="p-6">
           <Head icon={Users} title="Career interests" hint="Target roles chosen by students" />
           <Bars rows={data.targetRoles.map((r) => ({ label: r.role, value: r.count }))} format={(v) => `${v}`} />
         </Card>
         <Card data-tour="inst-collab" className="p-6 xl:col-span-2">
-          <Head icon={Handshake} title="Industry collaboration" hint="Upcoming FDPs, training and research programs open to your faculty" />
+          <div className="flex items-start justify-between">
+            <Head icon={Handshake} title="Industry collaboration" hint="Upcoming FDPs, training and research programs open to your faculty" />
+            <Link href="/institution/collaborations" className="text-xs font-semibold text-slate hover:underline">All →</Link>
+          </div>
           <ul className="divide-y divide-lightgray">
+            {data.collaborations.length === 0 && <li className="py-3 text-sm text-mediumgray">No open collaborations right now.</li>}
             {data.collaborations.map((c) => (
               <li key={c.title} className="flex items-center gap-3 py-2.5">
                 <span className="min-w-0 flex-1">
@@ -337,7 +376,10 @@ export default function InstitutionDashboard({ data: initialData }: { data: Data
                   </span>
                 </span>
                 <span className="rounded-full bg-violet-50 px-2 py-0.5 text-[10px] font-semibold text-violet-700">{c.type}</span>
-                <span className="w-24 text-right text-xs text-mediumgray">{c.interested} faculty interested</span>
+                <span className="w-36 text-right text-xs text-mediumgray">
+                  {c.interested} interested
+                  {c.ourFaculty > 0 && <span className="block font-semibold text-emerald">{c.ourFaculty} from your faculty</span>}
+                </span>
               </li>
             ))}
           </ul>
@@ -347,7 +389,10 @@ export default function InstitutionDashboard({ data: initialData }: { data: Data
       {/* Students table */}
       <Card data-tour="inst-students">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-lightgray px-5 py-3.5">
-          <h2 className="text-sm font-semibold text-navy">Students ({students.length})</h2>
+          <h2 className="text-sm font-semibold text-navy">
+            Students ({students.length}){" "}
+            <Link href="/institution/students" className="ml-2 text-xs font-semibold text-slate hover:underline">Open directory →</Link>
+          </h2>
           <div className="flex gap-1.5">
             {([["readiness", "Readiness"], ["modulesPassed", "Modules"], ["applications", "Applications"]] as const).map(([key, label]) => (
               <button
@@ -380,7 +425,7 @@ export default function InstitutionDashboard({ data: initialData }: { data: Data
               {students.map((s) => (
                 <tr key={s.id} className="hover:bg-surface-2">
                   <td className="px-5 py-2.5 font-medium text-navy">
-                    <a href={`/p/${s.id}`} target="_blank" rel="noreferrer" className="hover:text-slate hover:underline">
+                    <a href={`/view/student/${s.id}`} className="hover:text-slate hover:underline">
                       {s.name}
                     </a>
                   </td>

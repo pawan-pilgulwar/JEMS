@@ -1,4 +1,4 @@
-import { ObjectId, type Db } from "mongodb";
+import { Binary, ObjectId, type Db } from "mongodb";
 import { getDatabase } from "@/lib/db/mongodb";
 import { createNotification } from "@/lib/db/notifications";
 import { hashPassword, verifyPassword } from "@/lib/auth/password";
@@ -62,7 +62,61 @@ export async function unsaveJob(userId: string, ref: { jobId?: string; savedId?:
 
 // ── Applications ────────────────────────────────────────────────
 
-export async function applyToJob(userId: string, jobId: string): Promise<{ ok: true; id: string } | Fail> {
+/** What the browser sends: a built resume version, or an uploaded file as a data URL. */
+export interface ApplicationResumeAttachment {
+  type: "built" | "manual";
+  resumeId?: string;
+  name?: string;
+  fileName?: string;
+  fileData?: string;
+}
+
+/** Uploaded resume files: 2 MB, PDF or Word. */
+export const RESUME_MAX_BYTES = 2 * 1024 * 1024;
+const RESUME_TYPES: Record<string, string> = {
+  pdf: "application/pdf",
+  doc: "application/msword",
+  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+};
+
+/**
+ * Stored on the application (`jobApplications.resume`). A built resume is
+ * snapshotted so the company sees exactly what was sent even if the student
+ * edits it later; an uploaded file lives in `applicationResumes` so the
+ * application documents (listed everywhere) stay small.
+ *
+ *  applicationResumes { _id, studentId, fileName, mime, size, data: Binary, createdAt }
+ */
+type StoredResume =
+  | { type: "built"; name: string; resumeId: string; snapshot: unknown }
+  | { type: "manual"; name: string; fileId: ObjectId; fileName: string; mime: string; size: number };
+
+async function prepareResume(db: Db, studentId: ObjectId, raw: unknown): Promise<{ ok: true; resume: StoredResume; file?: Buffer } | Fail> {
+  const r = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  if (r.type === "built") {
+    const resumeId = str(r.resumeId);
+    const doc = await db.collection("resumes").findOne({ studentId }, { projection: { versions: 1 } });
+    const version = (Array.isArray(doc?.versions) ? doc.versions : []).find((v: { id?: unknown }) => str(v?.id) === resumeId) as { name?: unknown; data?: unknown } | undefined;
+    if (!version) return { ok: false, error: "That resume version no longer exists — pick another or upload a file.", status: 400 };
+    return { ok: true, resume: { type: "built", name: str(version.name).slice(0, 100) || "JEMS resume", resumeId, snapshot: version.data ?? null } };
+  }
+  if (r.type === "manual") {
+    const fileName = str(r.fileName || r.name).trim().slice(0, 120);
+    const ext = fileName.split(".").pop()?.toLowerCase() ?? "";
+    const mime = RESUME_TYPES[ext];
+    if (!mime) return { ok: false, error: "Upload a PDF or Word (.doc, .docx) resume.", status: 400 };
+    const m = /^data:([^;,]*);base64,([A-Za-z0-9+/=]+)$/.exec(str(r.fileData));
+    if (!m) return { ok: false, error: "The resume file couldn't be read — please choose it again.", status: 400 };
+    const file = Buffer.from(m[2], "base64");
+    if (file.length === 0) return { ok: false, error: "The resume file is empty.", status: 400 };
+    if (file.length > RESUME_MAX_BYTES) return { ok: false, error: "Resume files must be 2 MB or smaller.", status: 413 };
+    if (ext === "pdf" && file.subarray(0, 5).toString("latin1") !== "%PDF-") return { ok: false, error: "That file isn't a valid PDF.", status: 400 };
+    return { ok: true, resume: { type: "manual", name: fileName, fileId: new ObjectId(), fileName, mime, size: file.length }, file };
+  }
+  return { ok: false, error: "Choose a resume to send with your application.", status: 400 };
+}
+
+export async function applyToJob(userId: string, jobId: string, rawResume: unknown): Promise<{ ok: true; id: string } | Fail> {
   if (!ObjectId.isValid(userId) || !ObjectId.isValid(jobId)) return { ok: false, error: "Job not found.", status: 404 };
   try {
     const db = await getDb();
@@ -74,20 +128,55 @@ export async function applyToJob(userId: string, jobId: string): Promise<{ ok: t
     const existing = await db.collection("jobApplications").findOne({ studentId, jobId: job._id }, { projection: { _id: 1 } });
     if (existing) return { ok: false, error: "You have already applied to this role.", status: 409 };
 
+    const prepared = await prepareResume(db, studentId, rawResume);
+    if (!prepared.ok) return prepared;
+    const resumeAttachment = prepared.resume;
+
     const now = new Date();
     const role = str(job.role) || str(job.title);
     const company = str(job.company);
     let id: ObjectId;
     try {
       id = (
-        await db.collection("jobApplications").insertOne({ studentId, jobId: job._id, role, company, status: "Applied", createdAt: now, updatedAt: now })
+        await db.collection("jobApplications").insertOne({
+          studentId,
+          jobId: job._id,
+          role,
+          company,
+          resume: resumeAttachment,
+          status: "Applied",
+          createdAt: now,
+          updatedAt: now,
+        })
       ).insertedId;
     } catch (err) {
       // Unique (studentId, jobId) index: a double-click lost the race.
       if ((err as { code?: number }).code === 11000) return { ok: false, error: "You have already applied to this role.", status: 409 };
       throw err;
     }
+    if (resumeAttachment.type === "manual" && prepared.file) {
+      await db.collection("applicationResumes").insertOne({
+        _id: resumeAttachment.fileId,
+        applicationId: id,
+        studentId,
+        fileName: resumeAttachment.fileName,
+        mime: resumeAttachment.mime,
+        size: resumeAttachment.size,
+        data: new Binary(prepared.file),
+        createdAt: now,
+      });
+    }
 
+    // 1. Notify Student of successfully submitted application
+    await createNotification({
+      userId: studentId,
+      kind: "application",
+      title: `Application submitted for ${role}`,
+      body: `Your application with ${resumeAttachment?.name ?? "your resume"} was submitted to ${company}.`,
+      link: `/student/applications`,
+    });
+
+    // 2. Notify Company of new applicant
     if (job.companyId instanceof ObjectId) {
       const [user, profile] = await Promise.all([
         db.collection("users").findOne({ _id: studentId }, { projection: { name: 1, email: 1 } }),
@@ -98,7 +187,7 @@ export async function applyToJob(userId: string, jobId: string): Promise<{ ok: t
         userId: job.companyId,
         kind: "application",
         title: `New applicant for ${role}`,
-        body: `${name} applied to your ${str(job.type) || "opening"}.`,
+        body: `${name} applied to your ${str(job.type) || "opening"} with ${resumeAttachment?.name ?? "resume"}.`,
         link: `/company/candidates?job=${job._id.toString()}`,
       });
     }
@@ -106,6 +195,70 @@ export async function applyToJob(userId: string, jobId: string): Promise<{ ok: t
   } catch (err) {
     console.error("[student-actions] applyToJob failed:", err);
     return { ok: false, error: "Could not submit your application.", status: 500 };
+  }
+}
+
+export async function withdrawApplication(userId: string, applicationId: string): Promise<boolean> {
+  if (!ObjectId.isValid(userId) || !ObjectId.isValid(applicationId)) return false;
+  try {
+    const db = await getDb();
+    const app = await db.collection("jobApplications").findOneAndDelete({
+      _id: new ObjectId(applicationId),
+      studentId: new ObjectId(userId),
+    });
+    if (!app) return false;
+    await db.collection("applicationResumes").deleteMany({ applicationId: app._id });
+    // Let the company know the candidate dropped out of its pipeline.
+    const job = await db.collection("jobPostings").findOne({ _id: app.jobId }, { projection: { companyId: 1, role: 1 } });
+    if (job?.companyId instanceof ObjectId) {
+      const user = await db.collection("users").findOne({ _id: app.studentId }, { projection: { name: 1 } });
+      await createNotification({
+        userId: job.companyId,
+        kind: "application",
+        title: `Application withdrawn · ${str(job.role) || str(app.role)}`,
+        body: `${str(user?.name) || "A candidate"} withdrew their application.`,
+        link: `/company/candidates?job=${String(app.jobId)}`,
+      });
+    }
+    return true;
+  } catch (err) {
+    console.error("[student-actions] withdrawApplication failed:", err);
+    return false;
+  }
+}
+
+export type ApplicationResumeForCompany =
+  | { type: "built"; name: string; studentName: string; role: string; snapshot: unknown }
+  | { type: "manual"; name: string; studentName: string; role: string; fileName: string; mime: string; data: Buffer }
+  | { type: "none"; studentName: string; role: string };
+
+/** The resume a student sent with an application — only for the company that owns the opening. */
+export async function getApplicationResumeForCompany(companyUserId: string, applicationId: string): Promise<ApplicationResumeForCompany | null> {
+  if (!ObjectId.isValid(companyUserId) || !ObjectId.isValid(applicationId)) return null;
+  try {
+    const db = await getDb();
+    const app = await db.collection("jobApplications").findOne({ _id: new ObjectId(applicationId) });
+    if (!app) return null;
+    const job = await db.collection("jobPostings").findOne({ _id: app.jobId, companyId: new ObjectId(companyUserId) }, { projection: { role: 1 } });
+    if (!job) return null;
+    const [user, profile] = await Promise.all([
+      db.collection("users").findOne({ _id: app.studentId }, { projection: { name: 1, email: 1 } }),
+      db.collection("studentProfiles").findOne({ userId: app.studentId }, { projection: { displayName: 1 } }),
+    ]);
+    const studentName = str(profile?.displayName) || str(user?.name) || str(user?.email) || "Candidate";
+    const role = str(job.role) || str(app.role);
+    const r = (app.resume ?? {}) as Record<string, unknown>;
+    if (r.type === "built") return { type: "built", name: str(r.name), studentName, role, snapshot: r.snapshot ?? null };
+    if (r.type === "manual" && r.fileId instanceof ObjectId) {
+      const file = await db.collection("applicationResumes").findOne({ _id: r.fileId });
+      if (file?.data instanceof Binary) {
+        return { type: "manual", name: str(r.name), studentName, role, fileName: str(file.fileName), mime: str(file.mime), data: Buffer.from(file.data.buffer) };
+      }
+    }
+    return { type: "none", studentName, role };
+  } catch (err) {
+    console.error("[student-actions] getApplicationResumeForCompany failed:", err);
+    return null;
   }
 }
 

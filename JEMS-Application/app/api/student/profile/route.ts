@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
-import { getStudentProfile, updateStudentProfile } from "@/lib/db/student-data";
+import { getStudentProfile, setStudentInstitution, updateStudentProfile } from "@/lib/db/student-data";
 import { readJsonLimited } from "@/lib/http";
 import { rateLimit, tooManyRequests } from "@/lib/rate-limit";
 import { validateProfileInput } from "@/lib/validation/student";
@@ -46,6 +46,12 @@ export async function PATCH(request: Request) {
   const { value, error } = validateProfileInput(parsed.data);
   if (error || !value) {
     return NextResponse.json({ error: error ?? "Invalid input." }, { status: 400 });
+  }
+
+  // The institution is picked from the registered list and stored by id.
+  const rawInst = (parsed.data as Record<string, unknown>).institutionId;
+  if (typeof rawInst === "string" && !(await setStudentInstitution(userId, rawInst.trim()))) {
+    return NextResponse.json({ error: "Pick your institution from the list." }, { status: 400 });
   }
 
   const ok = await updateStudentProfile(userId, value);

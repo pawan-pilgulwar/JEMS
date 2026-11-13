@@ -52,6 +52,20 @@ export default function StudentSignup({ onBack }: StudentSignupProps) {
   const [roleOther, setRoleOther] = useState("");
   const [learning, setLearning] = useState("");
   const [years, setYears] = useState("");
+  const [institutionId, setInstitutionId] = useState("");
+  const [institutions, setInstitutions] = useState<{ value: string; label: string }[]>([]);
+
+  // Registered institutions for the optional "your institution" picker.
+  useEffect(() => {
+    let live = true;
+    fetch("/api/institutions")
+      .then((r) => (r.ok ? r.json() : { institutions: [] }))
+      .then((d: { institutions?: { id: string; name: string; location: string }[] }) => {
+        if (live) setInstitutions((d.institutions ?? []).map((i) => ({ value: i.id, label: i.location ? `${i.name} — ${i.location}` : i.name })));
+      })
+      .catch(() => {});
+    return () => { live = false; };
+  }, []);
 
   const [redirectIn, setRedirectIn] = useState(5);
   const [submitting, setSubmitting] = useState(false);
@@ -102,6 +116,7 @@ export default function StudentSignup({ onBack }: StudentSignupProps) {
           targetRole,
           learningStyle: learning,
           yearsOfExperience: years,
+          institutionId,
         }),
       });
       if (!res.ok) {
@@ -293,6 +308,18 @@ export default function StudentSignup({ onBack }: StudentSignupProps) {
               placeholder="Select"
               error={tried && !years ? "Select your years of experience." : null}
             />
+            {institutions.length > 0 && (
+              <div className="sm:col-span-2">
+                <SelectField
+                  id="st-institution"
+                  label="Your institution (optional)"
+                  value={institutionId}
+                  onChange={setInstitutionId}
+                  options={institutions}
+                  placeholder="Select your college / university (skip if none)"
+                />
+              </div>
+            )}
             {role === "Other" && (
               <div className="sm:col-span-2">
                 <TextInput

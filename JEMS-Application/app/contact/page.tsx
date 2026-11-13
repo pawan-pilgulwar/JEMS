@@ -6,6 +6,27 @@ import { Navbar } from "@/components/Navbar";
 
 export default function ContactPage() {
   const [sent, setSent] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState("");
+
+  const submit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const form = e.currentTarget;
+    const data = Object.fromEntries(new FormData(form));
+    setSending(true);
+    setError("");
+    try {
+      const res = await fetch("/api/contact", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind: "message", ...data }) });
+      const out = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) throw new Error(out.error || "Could not send your message.");
+      form.reset();
+      setSent(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not send your message.");
+    } finally {
+      setSending(false);
+    }
+  };
 
   return (
     <>
@@ -69,13 +90,7 @@ export default function ContactPage() {
                   </button>
                 </div>
               ) : (
-                <form
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    setSent(true);
-                  }}
-                  className="flex flex-col gap-5"
-                >
+                <form onSubmit={submit} className="flex flex-col gap-5">
                   <div>
                     <label
                       htmlFor="name"
@@ -85,7 +100,9 @@ export default function ContactPage() {
                     </label>
                     <input
                       id="name"
+                      name="name"
                       required
+                      maxLength={100}
                       className="w-full rounded-lg border border-lightgray px-3.5 py-2.5 text-sm text-navy outline-none transition-colors focus:border-slate focus:ring-2 focus:ring-slate/20"
                       placeholder="Your name"
                     />
@@ -99,6 +116,7 @@ export default function ContactPage() {
                     </label>
                     <input
                       id="email"
+                      name="email"
                       type="email"
                       required
                       className="w-full rounded-lg border border-lightgray px-3.5 py-2.5 text-sm text-navy outline-none transition-colors focus:border-slate focus:ring-2 focus:ring-slate/20"
@@ -114,17 +132,21 @@ export default function ContactPage() {
                     </label>
                     <textarea
                       id="message"
+                      name="message"
                       required
+                      maxLength={4000}
                       rows={5}
                       className="w-full resize-none rounded-lg border border-lightgray px-3.5 py-2.5 text-sm text-navy outline-none transition-colors focus:border-slate focus:ring-2 focus:ring-slate/20"
                       placeholder="How can we help?"
                     />
                   </div>
+                  {error && <p className="text-sm text-red-600">{error}</p>}
                   <button
                     type="submit"
-                    className="w-full rounded-full bg-cta-gradient px-5 py-3 text-sm font-semibold text-white shadow-[var(--shadow-cta)] transition-transform hover:scale-[1.02]"
+                    disabled={sending}
+                    className="w-full rounded-full bg-cta-gradient px-5 py-3 text-sm font-semibold text-white shadow-[var(--shadow-cta)] transition-transform hover:scale-[1.02] disabled:opacity-60"
                   >
-                    Send Message
+                    {sending ? "Sending…" : "Send Message"}
                   </button>
                 </form>
               )}

@@ -4,7 +4,6 @@ import { useState } from "react";
 import Link from "next/link";
 import {
   AlertTriangle,
-  ArrowRight,
   BookOpen,
   CheckCircle2,
   Code2,
@@ -12,7 +11,6 @@ import {
   Handshake,
   Layers,
   LoaderCircle,
-  Plus,
   RefreshCw,
   ShieldCheck,
   Sparkles,
@@ -113,7 +111,7 @@ export default function FacultyDashboard({ initialData }: { initialData: Faculty
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <span className="inline-flex items-center gap-1.5 rounded-full bg-slate/10 px-2.5 py-1 text-xs font-semibold text-slate">
-            <GraduationCap className="h-3.5 w-3.5" /> {data.faculty.institution} · {data.faculty.department}
+            <GraduationCap className="h-3.5 w-3.5" /> {data.faculty.institution || "Institution not set"} · {data.faculty.department}
           </span>
           <h1 className="mt-3 text-2xl font-bold text-navy">Academia & Curriculum Intelligence Portal</h1>
           <p className="mt-1 text-sm text-mediumgray">
@@ -378,7 +376,7 @@ export default function FacultyDashboard({ initialData }: { initialData: Faculty
             <h2 className="text-sm font-semibold text-navy">Department Students Cohort</h2>
             <p className="text-[11px] text-mediumgray">Real-time placement readiness & verified skills</p>
           </div>
-          <Link href="/faculty/dashboard" className="text-xs font-semibold text-slate hover:underline">
+          <Link href="/faculty/students" className="text-xs font-semibold text-slate hover:underline">
             View All ({data.kpis.departmentStudents})
           </Link>
         </div>
@@ -396,7 +394,7 @@ export default function FacultyDashboard({ initialData }: { initialData: Faculty
               {data.recentStudentActivity.map((s) => (
                 <tr key={s.studentId} className="hover:bg-surface-2">
                   <td className="px-5 py-2.5 font-medium text-navy">
-                    <a href={`/p/${s.studentId}`} target="_blank" rel="noreferrer" className="hover:underline hover:text-slate">
+                    <a href={`/view/student/${s.studentId}`} className="hover:underline hover:text-slate">
                       {s.name}
                     </a>
                   </td>

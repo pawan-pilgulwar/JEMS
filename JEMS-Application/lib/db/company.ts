@@ -2,6 +2,8 @@ import { ObjectId, type Db, type Document } from "mongodb";
 import { getDatabase } from "@/lib/db/mongodb";
 import { scoreAgainst } from "@/lib/agents/engine";
 import { APPLICATION_STATUSES, type CompanyApplicationStatus } from "@/lib/company/constants";
+import { createNotification } from "@/lib/db/notifications";
+import { loadStudentSummaries } from "@/lib/db/people";
 
 /**
  * Industry portal data: the company's openings, the applicants and
@@ -151,7 +153,18 @@ export interface CandidateView {
   score: number;
   matched: string[];
   missing: string[];
-  application: { id: string; status: string; appliedAt: string } | null;
+  application: { id: string; status: string; appliedAt: string; resume: ResumeRef | null } | null;
+}
+
+/** What resume came with an application (the file itself is served by the resume route). */
+export interface ResumeRef {
+  type: "built" | "manual";
+  name: string;
+}
+
+function resumeRef(raw: unknown): ResumeRef | null {
+  const r = (raw ?? {}) as Record<string, unknown>;
+  return r.type === "built" || r.type === "manual" ? { type: r.type, name: str(r.name) || "Resume" } : null;
 }
 
 /** Every student ranked by compatibility with one of the company's openings. */
@@ -194,7 +207,7 @@ export async function getCandidatesForOpening(companyUserId: string, jobId: stri
           readiness: readiness.get(k) ?? 0,
           verifiedSkills: skills.filter((s: { verified: boolean }) => s.verified).length,
           ...scoreAgainst(skills, opening.requiredSkills, opening.niceToHave),
-          application: app ? { id: app._id.toString(), status: str(app.status), appliedAt: iso(app.createdAt) } : null,
+          application: app ? { id: app._id.toString(), status: str(app.status), appliedAt: iso(app.createdAt), resume: resumeRef(app.resume) } : null,
         };
       })
       .sort((a, b) => Number(!!b.application) - Number(!!a.application) || b.score - a.score);
@@ -203,6 +216,49 @@ export async function getCandidatesForOpening(companyUserId: string, jobId: stri
   } catch (err) {
     console.error("[company] getCandidatesForOpening failed:", err);
     return null;
+  }
+}
+
+export interface ApplicantView extends CandidateView {
+  application: { id: string; status: string; appliedAt: string; resume: ResumeRef | null };
+  opening: { id: string; role: string; type: string; location: string; status: string };
+}
+
+/**
+ * Everyone who applied to any of the company's openings, each scored against
+ * the opening they applied to — the "all applicants" view of Candidates.
+ */
+export async function listCompanyApplicants(companyUserId: string): Promise<ApplicantView[]> {
+  if (!ObjectId.isValid(companyUserId)) return [];
+  try {
+    const db = await getDb();
+    const jobs = await db.collection("jobPostings").find({ companyId: new ObjectId(companyUserId) }).toArray();
+    const openingBy = new Map(jobs.map((j) => [j._id.toString(), openingFromDoc(j)]));
+    const applications = await db
+      .collection("jobApplications")
+      .find({ jobId: { $in: jobs.map((j) => j._id) } })
+      .sort({ createdAt: -1 })
+      .toArray();
+    const students = await loadStudentSummaries(db, [...new Set(applications.map((a) => String(a.studentId)))].map((s) => new ObjectId(s)));
+    return applications.flatMap((a): ApplicantView[] => {
+      const s = students.get(String(a.studentId));
+      const o = openingBy.get(String(a.jobId));
+      if (!s || !o) return [];
+      return [{
+        studentId: s.studentId,
+        name: s.name,
+        targetRole: s.targetRole,
+        institution: s.institution,
+        readiness: s.readiness,
+        verifiedSkills: s.verifiedSkills,
+        ...scoreAgainst(s.skills, o.requiredSkills, o.niceToHave),
+        application: { id: a._id.toString(), status: str(a.status) || "Applied", appliedAt: iso(a.createdAt), resume: resumeRef(a.resume) },
+        opening: { id: o.id, role: o.role, type: o.type, location: o.location, status: o.status },
+      }];
+    });
+  } catch (err) {
+    console.error("[company] listCompanyApplicants failed:", err);
+    return [];
   }
 }
 
@@ -216,6 +272,15 @@ export async function updateApplicationStatus(companyUserId: string, application
     const job = await db.collection("jobPostings").findOne({ _id: app.jobId, companyId: new ObjectId(companyUserId) });
     if (!job) return false;
     await db.collection("jobApplications").updateOne({ _id: app._id }, { $set: { status: String(status), updatedAt: new Date() } });
+    if (str(app.status) !== status) {
+      await createNotification({
+        userId: app.studentId as ObjectId,
+        kind: "application",
+        title: `${str(job.role)} at ${str(job.company)}: ${status}`,
+        body: `Your application status was updated to "${status}".`,
+        link: "/student/applications",
+      });
+    }
     return true;
   } catch (err) {
     console.error("[company] updateApplicationStatus failed:", err);
@@ -223,33 +288,7 @@ export async function updateApplicationStatus(companyUserId: string, application
   }
 }
 
-// ── Programs ────────────────────────────────────────────────────
-
-export interface ProgramView {
-  id: string;
-  title: string;
-  type: string;
-  skills: string[];
-  duration: string;
-  mode: string;
-  seats: number;
-  startsAt: string;
-}
-
-export async function listPrograms(companyUserId: string): Promise<ProgramView[]> {
-  if (!ObjectId.isValid(companyUserId)) return [];
-  try {
-    const db = await getDb();
-    const rows = await db.collection("industryPrograms").find({ companyId: new ObjectId(companyUserId) }).sort({ startsAt: 1 }).toArray();
-    return rows.map((p) => ({
-      id: p._id.toString(), title: str(p.title), type: str(p.type), skills: strArr(p.skills),
-      duration: str(p.duration), mode: str(p.mode), seats: Number(p.seats) || 0, startsAt: iso(p.startsAt),
-    }));
-  } catch (err) {
-    console.error("[company] listPrograms failed:", err);
-    return [];
-  }
-}
+// ── Programs (listing + applicants live in lib/db/programs.ts) ──
 
 export interface ProgramInput {
   title: string;
@@ -275,6 +314,7 @@ export async function createProgram(companyUserId: string, company: string, inpu
       mode: String(input.mode),
       seats: Number(input.seats) || 0,
       startsAt: new Date(input.startsAt),
+      status: "open",
       createdAt: new Date(),
     });
     return true;

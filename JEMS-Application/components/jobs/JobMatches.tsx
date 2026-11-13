@@ -1,10 +1,19 @@
 "use client";
 
+import CompanyLink from "@/components/profile/CompanyLink";
 import { useState } from "react";
-import { Bookmark, BookmarkCheck, Check, LoaderCircle, MapPin, Search, Target } from "lucide-react";
+import {
+  Bookmark,
+  BookmarkCheck,
+  Check,
+  MapPin,
+  Search,
+  Target,
+} from "lucide-react";
 import DashboardShell, { DashboardContainer } from "@/components/dashboard/student/DashboardShell";
 import { Card, EmptyState } from "@/components/dashboard/student/ui";
-import type { JobMatchView } from "@/lib/db/student-data";
+import type { JobMatchView, ResumeSummary } from "@/lib/db/student-data";
+import ApplyDialog from "./ApplyDialog";
 
 function matchTone(match: number) {
   if (match >= 70) return "bg-emerald/10 text-emerald";
@@ -20,34 +29,31 @@ const FILTERS = [
 
 type FilterKey = (typeof FILTERS)[number]["key"];
 
-async function send(url: string, method: "POST" | "DELETE", jobId: string) {
-  const res = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ jobId }) });
-  const data = (await res.json().catch(() => ({}))) as { error?: string };
-  if (!res.ok) throw new Error(data.error || "Something went wrong.");
-}
 
 export default function JobMatches({
   jobs,
   initialSaved,
   initialApplied,
   remoteOnly = false,
+  studentResumes = [],
 }: {
   jobs: JobMatchView[];
   initialSaved: string[];
   initialApplied: string[];
-  /** From Settings → Job preferences: start on the Remote filter. */
   remoteOnly?: boolean;
+  studentResumes?: ResumeSummary[];
 }) {
   const [filter, setFilter] = useState<FilterKey>(remoteOnly ? "remote" : "all");
   const [query, setQuery] = useState("");
   const [saved, setSaved] = useState<Set<string>>(() => new Set(initialSaved));
   const [applied, setApplied] = useState<Set<string>>(() => new Set(initialApplied));
-  const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState("");
+  const [successToast, setSuccessToast] = useState<string | null>(null);
+
+  const [applyJob, setApplyJob] = useState<JobMatchView | null>(null);
 
   const toggleSave = async (id: string) => {
     const wasSaved = saved.has(id);
-    // Optimistic: flip now, roll back if the server says no.
     const flip = (on: boolean) =>
       setSaved((prev) => {
         const next = new Set(prev);
@@ -58,25 +64,15 @@ export default function JobMatches({
     flip(!wasSaved);
     setError("");
     try {
-      await send("/api/student/saved-jobs", wasSaved ? "DELETE" : "POST", id);
+      const res = await fetch("/api/student/saved-jobs", {
+        method: wasSaved ? "DELETE" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jobId: id }),
+      });
+      if (!res.ok) throw new Error("Could not update saved jobs.");
     } catch (e) {
       flip(wasSaved);
       setError(e instanceof Error ? e.message : "Could not update saved jobs.");
-    }
-  };
-
-  const apply = async (j: JobMatchView) => {
-    setBusy(j.id);
-    setError("");
-    try {
-      await send("/api/student/applications", "POST", j.id);
-      setApplied((prev) => new Set(prev).add(j.id));
-    } catch (e) {
-      const message = e instanceof Error ? e.message : "Could not apply.";
-      if (/already applied/i.test(message)) setApplied((prev) => new Set(prev).add(j.id));
-      else setError(message);
-    } finally {
-      setBusy(null);
     }
   };
 
@@ -84,7 +80,10 @@ export default function JobMatches({
   const visible = jobs.filter(
     (j) =>
       (filter === "remote" ? j.remote : filter === "top" ? j.match >= 70 : true) &&
-      (!q || j.role.toLowerCase().includes(q) || j.company.toLowerCase().includes(q) || j.location.toLowerCase().includes(q)),
+      (!q ||
+        j.role.toLowerCase().includes(q) ||
+        j.company.toLowerCase().includes(q) ||
+        j.location.toLowerCase().includes(q)),
   );
 
   if (jobs.length === 0) {
@@ -94,7 +93,7 @@ export default function JobMatches({
           <EmptyState
             icon={Target}
             title="No job matches yet"
-            hint="Earn verified skills on your roadmap so we can match you with roles that fit. Your best matches will appear here."
+            hint="Earn verified skills on your roadmap so we can match you with roles that fit."
             ctaLabel="Open my roadmap"
             ctaHref="/student/roadmap"
           />
@@ -106,7 +105,15 @@ export default function JobMatches({
   return (
     <DashboardShell>
       <DashboardContainer className="space-y-6">
-        {/* Search + filters */}
+        {/* Success Toast */}
+        {successToast && (
+          <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white shadow-xl">
+            <Check className="h-5 w-5" />
+            <span>{successToast}</span>
+          </div>
+        )}
+
+        {/* Search + Filters */}
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
           <div className="relative flex-1">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-mediumgray" />
@@ -142,7 +149,7 @@ export default function JobMatches({
         </p>
         {error && <p className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>}
 
-        {/* Job list */}
+        {/* Job List */}
         <div className="space-y-4">
           {visible.map((j) => {
             const isSaved = saved.has(j.id);
@@ -160,7 +167,7 @@ export default function JobMatches({
                     </span>
                   </div>
                   <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-mediumgray">
-                    <span className="font-medium text-navy">{j.company}</span>
+                    <CompanyLink id={j.companyId} name={j.company} className="font-medium text-navy" />
                     <span className="inline-flex items-center gap-1">
                       <MapPin className="h-3.5 w-3.5" />
                       {j.location}
@@ -171,8 +178,16 @@ export default function JobMatches({
                   </p>
                   {(j.matched.length > 0 || j.missing.length > 0) && (
                     <div className="mt-2 flex flex-wrap gap-1">
-                      {j.matched.map((s) => <span key={s} className="rounded bg-emerald/10 px-1.5 py-0.5 text-[10px] font-medium text-emerald">✓ {s}</span>)}
-                      {j.missing.map((s) => <span key={s} className="rounded bg-red-50 px-1.5 py-0.5 text-[10px] font-medium text-red-600">✗ {s}</span>)}
+                      {j.matched.map((s) => (
+                        <span key={s} className="rounded bg-emerald/10 px-1.5 py-0.5 text-[10px] font-medium text-emerald">
+                          ✓ {s}
+                        </span>
+                      ))}
+                      {j.missing.map((s) => (
+                        <span key={s} className="rounded bg-red-50 px-1.5 py-0.5 text-[10px] font-medium text-red-600">
+                          ✗ {s}
+                        </span>
+                      ))}
                     </div>
                   )}
                 </div>
@@ -197,11 +212,9 @@ export default function JobMatches({
                   ) : (
                     <button
                       type="button"
-                      onClick={() => apply(j)}
-                      disabled={busy === j.id}
-                      className="inline-flex items-center gap-1.5 rounded-lg bg-primary-gradient px-5 py-2.5 text-sm font-semibold text-white shadow-[0_4px_12px_rgba(234,88,12,0.25)] transition-transform hover:-translate-y-0.5 disabled:opacity-60"
+                      onClick={() => { setError(""); setApplyJob(j); }}
+                      className="inline-flex items-center gap-1.5 rounded-lg bg-primary-gradient px-5 py-2.5 text-sm font-semibold text-white shadow-[0_4px_12px_rgba(234,88,12,0.25)] transition-transform hover:-translate-y-0.5"
                     >
-                      {busy === j.id && <LoaderCircle className="h-4 w-4 animate-spin" />}
                       Apply
                     </button>
                   )}
@@ -210,6 +223,20 @@ export default function JobMatches({
             );
           })}
         </div>
+
+        {applyJob && (
+          <ApplyDialog
+            job={{ ...applyJob, requiredSkills: [...applyJob.matched, ...applyJob.missing] }}
+            resumes={studentResumes}
+            onClose={() => setApplyJob(null)}
+            onApplied={(message) => {
+              setApplied((prev) => new Set(prev).add(applyJob.id));
+              setApplyJob(null);
+              setSuccessToast(message);
+              setTimeout(() => setSuccessToast(null), 4500);
+            }}
+          />
+        )}
       </DashboardContainer>
     </DashboardShell>
   );

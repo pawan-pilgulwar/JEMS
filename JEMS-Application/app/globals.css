@@ -672,6 +672,15 @@ html {
     box-shadow: none;
     aspect-ratio: auto;
   }
+  /* One-page mode: exactly one A4 sheet; the preview already scaled the content to fit. */
+  .resume-print[data-one-page] {
+    height: 297mm;
+    overflow: hidden;
+  }
+  @page {
+    size: A4;
+    margin: 0;
+  }
 }
 
 @layer base {
