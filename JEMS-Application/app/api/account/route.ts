@@ -1,15 +1,23 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { deleteUserById } from "@/lib/db/users";
+import { DEMO_EMAILS } from "@/lib/demo";
 import { rateLimit, tooManyRequests } from "@/lib/rate-limit";
 
 /** Permanently deletes the currently signed-in user's account. */
 export async function DELETE() {
   const session = await auth();
   const userId = session?.user?.id;
+  const email = session?.user?.email?.toLowerCase();
 
   if (!userId) {
     return NextResponse.json({ error: "Not signed in." }, { status: 401 });
+  }
+  if (email && DEMO_EMAILS.has(email)) {
+    return NextResponse.json(
+      { error: "Shared demo accounts cannot be deleted." },
+      { status: 403 },
+    );
   }
   // A destructive action — cap retries hard.
   const limit = await rateLimit(`account-delete:${userId}`, 5, 60_000);

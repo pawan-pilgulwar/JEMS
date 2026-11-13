@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { apiSession } from "@/lib/auth/api-session";
 import { changePassword } from "@/lib/db/student-actions";
 import { getUserById } from "@/lib/db/users";
+import { DEMO_EMAILS } from "@/lib/demo";
 import { readJsonLimited } from "@/lib/http";
 import { rateLimit, tooManyRequests } from "@/lib/rate-limit";
 import { validatePasswordChange } from "@/lib/validation/student-actions";
@@ -21,6 +22,9 @@ export async function POST(request: Request) {
   if (parsed.error) return NextResponse.json({ error: parsed.error }, { status: parsed.status });
   const user = await getUserById(s.userId);
   if (!user) return NextResponse.json({ error: "Account not found." }, { status: 404 });
+  if (DEMO_EMAILS.has(user.email.toLowerCase())) {
+    return NextResponse.json({ error: "Shared demo account passwords cannot be changed." }, { status: 403 });
+  }
 
   const { value, error } = validatePasswordChange(parsed.data, [user.name ?? "", user.email]);
   if (error || !value) return NextResponse.json({ error: error ?? "Invalid input." }, { status: 400 });

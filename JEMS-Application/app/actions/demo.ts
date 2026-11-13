@@ -1,5 +1,7 @@
 "use server";
 
+import { AuthError } from "next-auth";
+import { redirect } from "next/navigation";
 import { signIn } from "@/auth";
 import { DEMO_ACCOUNTS, type DemoRole } from "@/lib/demo";
 
@@ -12,12 +14,19 @@ const DEMO_PASSWORD = process.env.DEMO_PASSWORD ?? "Demo@1234";
 
 async function start(role: DemoRole) {
   const account = DEMO_ACCOUNTS[role];
-  // Throws a NEXT_REDIRECT on success, which Next turns into the navigation.
-  await signIn("credentials", {
-    email: account.email,
-    password: DEMO_PASSWORD,
-    redirectTo: account.dashboard,
-  });
+  try {
+    // Throws a NEXT_REDIRECT on success, which Next turns into the navigation.
+    await signIn("credentials", {
+      email: account.email,
+      password: DEMO_PASSWORD,
+      redirectTo: account.dashboard,
+    });
+  } catch (error) {
+    if (error instanceof AuthError) {
+      redirect(`/login?error=${encodeURIComponent(error.type)}`);
+    }
+    throw error;
+  }
 }
 
 export async function startStudentJourney() {
