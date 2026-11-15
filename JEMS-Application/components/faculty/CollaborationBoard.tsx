@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Building, CalendarDays, Check, Clock, Handshake, MapPin, Search, Star, Users } from "lucide-react";
 import { Card } from "@/components/dashboard/student/ui";
 import LiveRefresh from "@/components/portal/LiveRefresh";
+import { useDemoMode } from "@/components/tour/DemoMode";
 import type { CollaborationView } from "@/lib/db/collaborations";
 
 const TYPES = ["All", "FDP", "Faculty Internship", "Industrial Training", "Guest Lecture", "Research", "Consultancy", "Innovation Challenge", "Live Project"];
@@ -40,6 +41,7 @@ export default function CollaborationBoard({
   headline: string;
 }) {
   const router = useRouter();
+  const demo = useDemoMode();
   const [filter, setFilter] = useState("All");
   const [query, setQuery] = useState("");
   const [onlyMine, setOnlyMine] = useState(false);
@@ -59,6 +61,11 @@ export default function CollaborationBoard({
   const institutionView = items.some((c) => c.fromMyInstitution);
 
   const toggle = async (id: string) => {
+    // Tour: flip locally so the button responds, but nothing is saved.
+    if (demo) {
+      setOverride((o) => ({ ...o, [id]: !local.find((c) => c.id === id)?.mine }));
+      return;
+    }
     setBusy(id);
     setError(null);
     try {

@@ -34,9 +34,12 @@ const norm = (s: string) => s.trim().toLowerCase();
 export default function AssessmentHub({
   state: initialLiveState,
   papers: initialLivePapers,
+  take,
 }: {
   state: AssessmentState;
   papers: PaperSummary[];
+  /** A skill another page asked the student to test (`?take=`), shown as a call-out. */
+  take?: string;
 }) {
   const [state, setState] = useState<AssessmentState>(initialLiveState);
   const [papers, setPapers] = useState<PaperSummary[]>(initialLivePapers);
@@ -131,6 +134,15 @@ export default function AssessmentHub({
           ))}
         </div>
 
+        {take && !editing && (
+          <Card className="flex flex-col gap-3 border-orange/30 bg-orange/5 p-4 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm text-navy">
+              Verify <strong>{take}</strong> with a fresh AI test — pass 70% and it shows as verified on your resume and job matches.
+            </p>
+            <AiTestAction ai={ai} skill={take} />
+          </Card>
+        )}
+
         {editing ? (
           <Questionnaire
             state={state}
@@ -219,17 +231,7 @@ export default function AssessmentHub({
                             <Lock className="h-3.5 w-3.5" /> Cooldown
                           </span>
                         ) : (
-                          <>
-                            {cat?.testable && (
-                              <Link
-                                href={`/student/assessment/test/${encodeURIComponent(s.name)}`}
-                                className="inline-flex items-center gap-1.5 rounded-lg bg-navy px-3.5 py-2 text-xs font-semibold text-white transition-colors hover:bg-[#1f2937]"
-                              >
-                                Take Quick MCQ
-                              </Link>
-                            )}
-                            <AiTestAction ai={ai} skill={s.name} primary={!cat?.testable} />
-                          </>
+                          <AiTestAction ai={ai} skill={s.name} />
                         )}
                       </div>
                     </li>
@@ -282,24 +284,29 @@ function useAiTests(papers: PaperSummary[], onRefresh: () => void) {
 
 type AiTests = ReturnType<typeof useAiTests>;
 
-function AiTestAction({ ai, skill, primary }: { ai: AiTests; skill: string; primary: boolean }) {
+/**
+ * The single "Take test" action per skill. Every click generates a brand-new
+ * AI test (the agent is told which questions this student has already seen),
+ * so a retake never repeats the last paper. While a generated paper is
+ * waiting or half-done, the same button opens it instead.
+ */
+function AiTestAction({ ai, skill }: { ai: AiTests; skill: string }) {
   const task = ai.latestFor(skill, "assessment.generate");
   const paper = ai.paperFor(skill);
-  const cls = primary
-    ? "inline-flex items-center gap-1.5 rounded-lg bg-primary-gradient px-3.5 py-2 text-xs font-semibold text-white shadow-[0_4px_12px_rgba(234,88,12,0.25)] transition-transform hover:-translate-y-0.5 disabled:opacity-60"
-    : "inline-flex items-center gap-1.5 rounded-lg border border-lightgray px-3.5 py-2 text-xs font-semibold text-navy transition-colors hover:border-slate hover:text-slate disabled:opacity-60";
+  const cls =
+    "inline-flex items-center gap-1.5 rounded-lg bg-primary-gradient px-3.5 py-2 text-xs font-semibold text-white shadow-[0_4px_12px_rgba(234,88,12,0.25)] transition-transform hover:-translate-y-0.5 disabled:opacity-60";
 
   if ((task && isActive(task.status)) || ai.starting === skill) {
     return (
       <span className="inline-flex items-center gap-1.5 rounded-lg border border-lightgray px-3.5 py-2 text-xs font-semibold text-mediumgray">
-        <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> Generating AI test…
+        <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> Generating your test…
       </span>
     );
   }
   if (paper && (paper.status === "ready" || paper.status === "in-progress")) {
     return (
       <Link href={`/student/assessment/ai/${paper.id}`} className={cls}>
-        <Sparkles className="h-3.5 w-3.5" /> {paper.status === "ready" ? "Start AI test" : "Resume AI test"}
+        <Sparkles className="h-3.5 w-3.5" /> {paper.status === "ready" ? "Start test" : "Continue test"}
       </Link>
     );
   }
@@ -312,7 +319,7 @@ function AiTestAction({ ai, skill, primary }: { ai: AiTests; skill: string; prim
   }
   return (
     <button type="button" onClick={() => ai.start(skill)} className={cls}>
-      <Sparkles className="h-3.5 w-3.5" /> AI test
+      <Sparkles className="h-3.5 w-3.5" /> Take test
     </button>
   );
 }
@@ -341,7 +348,7 @@ function AiTestsCard({ ai, papers }: { ai: AiTests; papers: PaperSummary[] }) {
             <Sparkles className="h-4 w-4 text-slate" /> AI-generated comprehensive tests
           </h2>
           <p className="text-[11px] text-mediumgray">
-            Adaptive tests with multiple choice, written analysis, and code sandbox. Pass 70% to verify.
+            Every test is freshly written by AI — new questions each time — with multiple choice, written answers and code. Pass 70% to verify.
           </p>
         </div>
         <form
@@ -363,7 +370,7 @@ function AiTestsCard({ ai, papers }: { ai: AiTests; papers: PaperSummary[] }) {
             disabled={!skill.trim() || !!ai.starting}
             className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg bg-navy px-3.5 text-xs font-semibold text-white transition-colors hover:bg-[#1f2937] disabled:opacity-60"
           >
-            Create Test
+            Take test
           </button>
         </form>
       </div>

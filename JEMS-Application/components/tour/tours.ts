@@ -30,10 +30,12 @@ export interface TourStep {
   desktopOnly?: boolean;
 }
 
-const DASH = "/student/dashboard";
-const COMPANY = "/company/dashboard";
-const FACULTY = "/faculty/dashboard";
-const INSTITUTION = "/institution/dashboard";
+// Tours run on /tour/* pages, which render the portals from static sample data.
+const DASH = "/tour/student";
+const COMPANY = "/tour/company";
+const FACULTY = "/tour/faculty";
+const FACULTY_COLLAB = "/tour/faculty/collaborations";
+const INSTITUTION = "/tour/institution";
 
 export const TOURS: Record<TourId, { title: string; steps: TourStep[] }> = {
   // ── Pre-login: the pitch, end to end ─────────────────────────────────
@@ -408,7 +410,7 @@ export const TOURS: Record<TourId, { title: string; steps: TourStep[] }> = {
           "Connect with industry through FDPs, faculty internships, industrial training and research, and bring real-world practice into your teaching.",
       },
       {
-        route: FACULTY,
+        route: FACULTY_COLLAB,
         target: '[data-tour="collab-stats"]',
         placement: "bottom",
         pillar: "Collaboration",
@@ -417,7 +419,7 @@ export const TOURS: Record<TourId, { title: string; steps: TourStep[] }> = {
           "How many programs are open, how many are FDPs and training or research and consultancy, and how many you've shown interest in.",
       },
       {
-        route: FACULTY,
+        route: FACULTY_COLLAB,
         target: '[data-tour="collab-filters"]',
         placement: "bottom",
         pillar: "Collaboration",
@@ -426,7 +428,7 @@ export const TOURS: Record<TourId, { title: string; steps: TourStep[] }> = {
           "Filter by type, such as FDPs, faculty internships, guest lectures, research or live projects, to see only what's relevant to you.",
       },
       {
-        route: FACULTY,
+        route: FACULTY_COLLAB,
         target: '[data-tour="collab-grid"] > :first-child',
         placement: "right",
         pillar: "Collaboration",
@@ -435,7 +437,7 @@ export const TOURS: Record<TourId, { title: string; steps: TourStep[] }> = {
           "Each card shows the company, dates, duration, location, seats and focus areas, so you can decide at a glance.",
       },
       {
-        route: FACULTY,
+        route: FACULTY_COLLAB,
         target: '[data-tour="collab-grid"] > :first-child button',
         placement: "bottom",
         pillar: "Collaboration",

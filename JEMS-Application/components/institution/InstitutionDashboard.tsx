@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
   AlertTriangle,
@@ -20,6 +20,7 @@ import {
   Users,
   Zap,
 } from "lucide-react";
+import { useDemoMode } from "@/components/tour/DemoMode";
 import { Card } from "@/components/dashboard/student/ui";
 import type { InstitutionDashboard as Data } from "@/lib/db/institution";
 import type { InstitutionInsightsResponse } from "@/lib/agent/types";
@@ -75,6 +76,8 @@ function Head({ icon: Icon, title, hint }: { icon: typeof Users; title: string; 
 
 export default function InstitutionDashboard({ data: initialData }: { data: Data }) {
   const [data, setData] = useState<Data>(initialData);
+  // Tour pages render sample data — never fetch or write from here.
+  const demo = useDemoMode();
   const [refreshing, setRefreshing] = useState(false);
   const [lastRefreshed, setLastRefreshed] = useState<Date>(new Date());
   const [sort, setSort] = useState<"readiness" | "modulesPassed" | "applications">("readiness");
@@ -85,6 +88,7 @@ export default function InstitutionDashboard({ data: initialData }: { data: Data
   const [aiError, setAiError] = useState("");
 
   const refreshLive = async () => {
+    if (demo) return;
     setRefreshing(true);
     try {
       const res = await fetch("/api/institution/dashboard");
@@ -101,15 +105,26 @@ export default function InstitutionDashboard({ data: initialData }: { data: Data
     }
   };
 
-  // Keep the numbers live: re-pull every minute while the tab is visible.
+  // Keep the numbers live: re-pull every minute while the tab is visible
+  // (never on the tour pages, which show sample data). The ref keeps the
+  // interval on the latest refreshLive without restarting it each render.
+  const refreshRef = useRef(refreshLive);
   useEffect(() => {
+    refreshRef.current = refreshLive;
+  });
+  useEffect(() => {
+    if (demo) return;
     const id = setInterval(() => {
-      if (document.visibilityState === "visible") void refreshLive();
+      if (document.visibilityState === "visible") void refreshRef.current();
     }, 60_000);
     return () => clearInterval(id);
-  }, []);
+  }, [demo]);
 
   const runAiAnalysis = async () => {
+    if (demo) {
+      setAiError("This is the guided tour with sample data — sign in to run the AI on your own data.");
+      return;
+    }
     setAnalyzing(true);
     setAiError("");
     try {

@@ -3,6 +3,7 @@
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { RefreshCw } from "lucide-react";
+import { useDemoMode } from "@/components/tour/DemoMode";
 
 /**
  * Re-renders the current server page on an interval (and on demand), so
@@ -13,17 +14,20 @@ export default function LiveRefresh({ intervalMs = 60_000 }: { intervalMs?: numb
   const router = useRouter();
   const [pending, start] = useTransition();
   const [at, setAt] = useState(() => new Date());
+  const demo = useDemoMode();
 
   useEffect(() => {
+    if (demo) return;
     const id = setInterval(() => {
       if (document.visibilityState !== "visible") return;
       start(() => router.refresh());
       setAt(new Date());
     }, intervalMs);
     return () => clearInterval(id);
-  }, [intervalMs, router]);
+  }, [intervalMs, router, demo]);
 
   const refresh = () => {
+    if (demo) return;
     start(() => router.refresh());
     setAt(new Date());
   };

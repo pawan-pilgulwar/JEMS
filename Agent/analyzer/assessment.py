@@ -51,6 +51,10 @@ class GenerateIn(BaseModel):
     topics: list[str] = []
     difficulty: Literal["easy", "medium", "hard", "mixed"] = "mixed"
     counts: dict[str, int] = {"mcq": 3, "short_answer": 2, "coding": 1}
+    # Questions (or coding-problem titles) this student has already been given for the skill.
+    avoid: list[str] = []
+    # Any string; changes the angle the paper is written from so repeat papers differ.
+    variation: str = ""
     model_config = ConfigDict(json_schema_extra={"examples": [{
         "skill": "Core Java",
         "topics": ["classes", "inheritance", "collections"],
@@ -104,6 +108,29 @@ class GradeIn(BaseModel):
 # --------------------------------------------------------------------------------------
 # Question generation
 # --------------------------------------------------------------------------------------
+FOCUS_ANGLES = [
+    "practical debugging scenarios", "how things work under the hood", "real project situations",
+    "common mistakes and misconceptions", "comparing two approaches", "edge cases",
+    "performance and trade-offs", "reading and predicting code output", "best practices in industry",
+]
+
+
+def _fresh(avoid, variation):
+    """Extra prompt text that steers each paper away from earlier ones."""
+    rng = random.Random(variation or None)
+    angle = ", ".join(rng.sample(FOCUS_ANGLES, 2))
+    lines = [f"Favour questions about: {angle}. Vary the subtopics; do not default to the most obvious ones."]
+    recent = [a.strip()[:160] for a in avoid[-40:] if a.strip()]
+    if recent:
+        lines.append("The student has ALREADY seen these questions. Write completely different ones "
+                     "(different subtopics, not rewordings):\n- " + "\n- ".join(recent))
+    return "\n" + "\n".join(lines)
+
+
+def _norm(text):
+    return re.sub(r"\W+", " ", text.lower()).strip()
+
+
 def _topics_line(topics):
     return ", ".join(topics) if topics else "choose the most important topics of the skill"
 
@@ -115,7 +142,7 @@ def _shuffle_options(options, correct):
     return [options[i] for i in order], [order.index(c) for c in correct]
 
 
-def gen_mcq(skill, topics, difficulty, n):
+def gen_mcq(skill, topics, difficulty, n, extra=""):
     system = ("You write exam questions for engineering students. Write single-answer multiple-choice questions. "
               "Each has exactly 4 distinct options and exactly ONE correct answer. Wrong options must be plausible "
               "but clearly wrong to someone who knows the topic. No 'all of the above' or 'none of the above'. "
@@ -125,8 +152,8 @@ def gen_mcq(skill, topics, difficulty, n):
         "difficulty": {"type": "string", "enum": ["easy", "medium", "hard"]}, "explanation": STR},
         "required": ["question", "options", "answer_index", "topic", "difficulty", "explanation"]})},
         "required": ["questions"]}
-    user = (f"Skill: {skill}\nTopics: {_topics_line(topics)}\nWrite {n + 2} questions: {DIFFICULTY_HINT[difficulty]}.")
-    data = call_agent("assessment", system, user, schema, 0.4)
+    user = (f"Skill: {skill}\nTopics: {_topics_line(topics)}\nWrite {n + 2} questions: {DIFFICULTY_HINT[difficulty]}.{extra}")
+    data = call_agent("assessment", system, user, schema, 0.7)
     out, seen = [], set()
     for q in data["questions"]:
         opts = [str(o).strip() for o in q["options"]]
@@ -144,7 +171,7 @@ def gen_mcq(skill, topics, difficulty, n):
     return out[:n]
 
 
-def gen_multi(skill, topics, difficulty, n):
+def gen_multi(skill, topics, difficulty, n, extra=""):
     system = ("You write exam questions for engineering students. Write multiple-select questions: 5 distinct "
               "options and 2 or 3 correct answers. The question must say 'Select all that apply'. "
               "Add a one-sentence explanation.")
@@ -153,8 +180,8 @@ def gen_multi(skill, topics, difficulty, n):
         "difficulty": {"type": "string", "enum": ["easy", "medium", "hard"]}, "explanation": STR},
         "required": ["question", "options", "answer_indexes", "topic", "difficulty", "explanation"]})},
         "required": ["questions"]}
-    user = (f"Skill: {skill}\nTopics: {_topics_line(topics)}\nWrite {n + 1} questions: {DIFFICULTY_HINT[difficulty]}.")
-    data = call_agent("assessment", system, user, schema, 0.4)
+    user = (f"Skill: {skill}\nTopics: {_topics_line(topics)}\nWrite {n + 1} questions: {DIFFICULTY_HINT[difficulty]}.{extra}")
+    data = call_agent("assessment", system, user, schema, 0.7)
     out = []
     for q in data["questions"]:
         opts = [str(o).strip() for o in q["options"]]
@@ -170,7 +197,7 @@ def gen_multi(skill, topics, difficulty, n):
     return out[:n]
 
 
-def gen_short(skill, topics, difficulty, n):
+def gen_short(skill, topics, difficulty, n, extra=""):
     system = ("You write written-answer exam questions for engineering students, answerable in 2-5 sentences. "
               "For each question give a checklist of 2 to 4 KEY POINTS a correct answer must contain, each with a "
               "weight of 1 to 3 (3 = essential). Each key point must be a short, specific, checkable statement. "
@@ -183,8 +210,8 @@ def gen_short(skill, topics, difficulty, n):
         "difficulty": {"type": "string", "enum": ["easy", "medium", "hard"]}},
         "required": ["question", "key_points", "model_answer", "topic", "difficulty"]})},
         "required": ["questions"]}
-    user = (f"Skill: {skill}\nTopics: {_topics_line(topics)}\nWrite {n + 1} questions: {DIFFICULTY_HINT[difficulty]}.")
-    data = call_agent("assessment", system, user, schema, 0.4)
+    user = (f"Skill: {skill}\nTopics: {_topics_line(topics)}\nWrite {n + 1} questions: {DIFFICULTY_HINT[difficulty]}.{extra}")
+    data = call_agent("assessment", system, user, schema, 0.7)
     out = []
     for q in data["questions"]:
         pts = [{"point": p["point"].strip(), "weight": max(1, min(3, int(p["weight"])))}
@@ -223,11 +250,11 @@ def _run_many(language, code, inputs):
         return list(pool.map(lambda i: judge.run_once(language, code, i), inputs))
 
 
-def gen_coding_one(skill, topics, difficulty, used_titles):
+def gen_coding_one(skill, topics, difficulty, used_titles, extra=""):
     """Write one coding problem and compute its expected outputs by running the reference solution."""
     avoid = f"\nDo NOT repeat these problems: {', '.join(used_titles)}." if used_titles else ""
     level = {"mixed": "easy to medium"}.get(difficulty, difficulty)
-    user = f"Skill: {skill}\nTopics: {_topics_line(topics)}\nWrite ONE problem of {level} difficulty.{avoid}"
+    user = f"Skill: {skill}\nTopics: {_topics_line(topics)}\nWrite ONE problem of {level} difficulty.{avoid}{extra}"
     for _ in range(3):
         data = call_agent("coding", CODING_SYSTEM, user, CODING_SCHEMA, 0.5)
         samples = [s if s.endswith("\n") else s + "\n" for s in data["sample_inputs"][:2]]
@@ -250,10 +277,10 @@ def gen_coding_one(skill, topics, difficulty, used_titles):
     return None
 
 
-def gen_coding(skill, topics, difficulty, n):
+def gen_coding(skill, topics, difficulty, n, extra=""):
     out, titles = [], []
     for _ in range(n):
-        q = gen_coding_one(skill, topics, difficulty, titles)
+        q = gen_coding_one(skill, topics, difficulty, titles, extra)
         if q:
             out.append(q)
             titles.append(q["title"])
@@ -286,11 +313,15 @@ def generate(body: GenerateIn):
     if bad:
         raise HTTPException(422, f"Unknown question type(s): {bad}. Use: {list(QUESTION_TYPES)}")
     questions, warnings = [], []
+    extra = _fresh(body.avoid, body.variation)
+    avoid_keys = {_norm(a) for a in body.avoid}
     for qtype, n in body.counts.items():
         if n <= 0:
             continue
         n = min(n, MAX_COUNT[qtype])
-        made = GENERATORS[qtype](body.skill, body.topics, body.difficulty, n)
+        made = GENERATORS[qtype](body.skill, body.topics, body.difficulty, n, extra)
+        # Belt and braces: drop anything the student has literally seen before.
+        made = [q for q in made if _norm(q.get("title") or q["text"]) not in avoid_keys]
         if len(made) < n:
             warnings.append(f"Asked for {n} '{qtype}' question(s) but only {len(made)} passed the checks.")
         questions.extend(made)

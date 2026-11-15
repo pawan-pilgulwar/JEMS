@@ -388,11 +388,19 @@ export const generateHandler: TaskHandler = async (ctx) => {
   }
   if (!subject) throw new TaskInputError("No skill was given for the test.");
   const key = roadmapId ? moduleSubjectKey(roadmapId.toString(), subject) : skillKey(subject);
-  const current = await db.collection("aiPapers").findOne({ studentId: ctx.userId, purpose, subjectKey: key }, { projection: { status: 1 } });
+  const current = await db.collection("aiPapers").findOne({ studentId: ctx.userId, purpose, subjectKey: key }, { projection: { status: 1, questions: 1, askedHistory: 1 } });
   if (current?.status === "submitted") throw new TaskInputError(`Your previous ${subject} paper is still being graded. Try again once it is done.`);
 
   await ctx.progress(purpose === "interview" ? `Preparing your ${subject} interview questions…` : `Writing your ${subject} ${purpose === "module" ? "module " : ""}test${counts.coding ? " (coding questions are checked by running them)" : ""}…`);
-  const res = await agent.generatePaper({ skill: agentSkill, ...(topics.length ? { topics } : {}), difficulty, counts }, { signal: ctx.signal });
+  // Every paper must be new: tell the agent what this student has already been asked for this subject.
+  const previous = (Array.isArray(current?.questions) ? current.questions : [])
+    .map((q: { title?: unknown; text?: unknown }) => str(q?.title) || str(q?.text))
+    .filter(Boolean);
+  const askedHistory = [...strArr(current?.askedHistory, 200, 300), ...previous].slice(-80);
+  const res = await agent.generatePaper(
+    { skill: agentSkill, ...(topics.length ? { topics } : {}), difficulty, counts, avoid: askedHistory.slice(-40), variation: crypto.randomUUID() },
+    { signal: ctx.signal },
+  );
 
   const agentStudent = new Map(((Array.isArray(res?.student_paper) ? res.student_paper : []) as unknown[]).filter(isRecord).map((q) => [str(q.id), q]));
   const questions = (Array.isArray(res?.questions) ? res.questions : []).map(sanitizeFull).filter((q): q is PaperQuestion => !!q);
@@ -420,6 +428,7 @@ export const generateHandler: TaskHandler = async (ctx) => {
         totalMarks: num(res?.total_marks, questions.reduce((n, q) => n + q.marks, 0)),
         minutes,
         warnings: strArr(res?.warnings, 10),
+        askedHistory,
         status: "ready",
         generatedAt: now,
         updatedAt: now,

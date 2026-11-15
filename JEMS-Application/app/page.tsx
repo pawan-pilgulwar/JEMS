@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import {
@@ -18,12 +19,6 @@ import TourButton from "@/components/tour/TourButton";
 import { useTour } from "@/components/tour/TourProvider";
 import JourneyButton from "@/components/demo/JourneyButton";
 import type { JourneyTone } from "@/components/demo/JourneyButton";
-import {
-  startStudentJourney,
-  startCompanyJourney,
-  startFacultyJourney,
-  startInstitutionJourney,
-} from "@/app/actions/demo";
 
 /* ─── Module Data ────────────────────────────────────────────────── */
 
@@ -34,9 +29,7 @@ interface ModuleConfig {
   description: string;
   features: { title: string; desc: string }[];
   tone: JourneyTone;
-  action: () => Promise<void>;
   journeyLabel: string;
-  pendingLabel: string;
   loginRole: string;
   iconBg: string;
   iconColor: string;
@@ -58,9 +51,7 @@ const MODULES: ModuleConfig[] = [
       { title: "Career roadmap", desc: "Personalized learning path with progress tracking and certification recommendations" },
     ],
     tone: "student",
-    action: startStudentJourney,
     journeyLabel: "Explore student journey",
-    pendingLabel: "Opening dashboard",
     loginRole: "student",
     iconBg: "bg-orange/10",
     iconColor: "text-orange",
@@ -84,9 +75,7 @@ const MODULES: ModuleConfig[] = [
       { title: "Recruitment analytics", desc: "Track hiring pipeline, skill demand trends & placement outcome dashboards" },
     ],
     tone: "company",
-    action: startCompanyJourney,
     journeyLabel: "Explore industry journey",
-    pendingLabel: "Opening dashboard",
     loginRole: "company",
     iconBg: "bg-navy/[0.07]",
     iconColor: "text-navy",
@@ -110,9 +99,7 @@ const MODULES: ModuleConfig[] = [
       { title: "Student mentorship", desc: "Guide students through internships, verify activities & support career development" },
     ],
     tone: "faculty",
-    action: startFacultyJourney,
     journeyLabel: "Explore academician journey",
-    pendingLabel: "Opening dashboard",
     loginRole: "faculty",
     iconBg: "bg-violet-500/10",
     iconColor: "text-violet-600",
@@ -136,9 +123,7 @@ const MODULES: ModuleConfig[] = [
       { title: "Reporting & compliance", desc: "Export analytics for accreditation, audits & data-driven policy decisions" },
     ],
     tone: "institution",
-    action: startInstitutionJourney,
     journeyLabel: "Explore institution journey",
-    pendingLabel: "Opening dashboard",
     loginRole: "institution",
     iconBg: "bg-teal-500/10",
     iconColor: "text-teal-600",
@@ -330,22 +315,17 @@ export default function Home() {
                 <div className="mt-8">
                   <JourneyButton
                     dataTour={`${mod.key}-button`}
-                    action={mod.action}
+                    href={`/login?role=${mod.loginRole}`}
                     tone={mod.tone}
                     label={mod.journeyLabel}
-                    pendingLabel={mod.pendingLabel}
                   />
                 </div>
 
                 <p className="mt-4 text-center text-[13px] text-ink-soft">
-                  Opens a demo account &mdash; no sign-up needed.{" "}
-                  <button
-                    type="button"
-                    onClick={() => router.push(`/login?role=${mod.loginRole}`)}
-                    className={`font-semibold underline decoration-current/30 underline-offset-4 transition-colors hover:decoration-current ${mod.iconColor}`}
-                  >
-                    Use your own
-                  </button>
+                  Sign in to the {mod.journeyLabel.replace(/^Explore |journey$/g, "").trim()} portal &mdash; or{" "}
+                  <Link href="/signup" className={`font-semibold underline decoration-current/30 underline-offset-4 transition-colors hover:decoration-current ${mod.iconColor}`}>
+                    create an account
+                  </Link>
                 </p>
               </div>
             </article>

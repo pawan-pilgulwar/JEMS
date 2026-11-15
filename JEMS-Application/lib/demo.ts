@@ -1,7 +1,7 @@
 /**
  * Demo accounts used for the guided "journey" entry points on the landing page.
  *
- * These are real, seeded accounts (see scripts/seedPlatform.js) rather than an
+ * These are real, seeded accounts (see scripts/seedPresentation.mjs) rather than an
  * auth bypass: a judge signing in this way gets an ordinary session, so every
  * downstream permission check, API route and page behaves exactly as it would
  * for a real user. Nothing special-cases "demo mode".
@@ -20,22 +20,22 @@ export interface DemoAccount {
 
 export const DEMO_ACCOUNTS: Record<DemoRole, DemoAccount> = {
   student: {
-    email: "demo@jems.dev",
+    email: "aarav.sharma@student.jems.demo",
     dashboard: "/student/dashboard",
     label: "Student",
   },
   company: {
-    email: "company@jems.dev",
+    email: "campus.hiring@infosys.jems.demo",
     dashboard: "/company/dashboard",
     label: "Industry",
   },
   faculty: {
-    email: "faculty@jems.dev",
+    email: "kavita.raghunathan@pes.jems.demo",
     dashboard: "/faculty/dashboard",
     label: "Academician",
   },
   institution: {
-    email: "institution@jems.dev",
+    email: "placements@pes.jems.demo",
     dashboard: "/institution/dashboard",
     label: "Institution",
   },

@@ -53,27 +53,27 @@ export default function TourMenu({ tour, label }: { tour: TourId; label?: string
           <div className="flex items-center justify-between gap-3">
             <div>
               <p className="text-sm font-semibold text-navy">Guided tours</p>
-              <p className="text-[11px] text-mediumgray">{tourEnabled ? "On — tours start on first visit to each portal." : "Off — turn on to get step-by-step walkthroughs."}</p>
+              <p className="text-[11px] text-mediumgray">{tourEnabled ? "Auto-start on — tours open on first visit to each portal." : "Auto-start off — start a tour yourself below."}</p>
             </div>
             <button
               type="button"
               role="switch"
               aria-checked={tourEnabled}
-              aria-label="Enable guided tours"
+              aria-label="Start guided tours automatically"
               onClick={() => setTourEnabled(!tourEnabled)}
               className={`relative inline-flex h-6 w-11 shrink-0 rounded-full border-2 border-transparent transition-colors ${tourEnabled ? "bg-orange" : "bg-gray-200"}`}
             >
               <span className={`inline-block h-5 w-5 rounded-full bg-white shadow transition-transform ${tourEnabled ? "translate-x-5" : "translate-x-0"}`} />
             </button>
           </div>
+          <p className="mt-3 text-[11px] text-mediumgray">The tour uses sample data and returns you to the home page when you leave it.</p>
           <button
             type="button"
-            disabled={!tourEnabled}
             onClick={() => {
               setOpen(false);
               start(tour);
             }}
-            className="mt-3 inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-navy px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-[#1f2937] disabled:cursor-not-allowed disabled:bg-lightgray disabled:text-mediumgray"
+            className="mt-2 inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-navy px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-[#1f2937]"
           >
             <PlayCircle className="h-4 w-4" /> Start the tour
           </button>

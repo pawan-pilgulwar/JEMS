@@ -9,7 +9,7 @@
     "lint": "eslint",
     "setup-db": "node --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/setupDatabase.js",
     "test-db": "node --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/testConnection.js",
-    "seed-demo": "node --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/seedDemo.js && node --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/seedPlatform.js"
+    "seed-demo": "node --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/seedPresentation.mjs --reset"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",

@@ -3,16 +3,20 @@
 import { useState } from "react";
 import Link from "next/link";
 import { ArrowRight, Briefcase, GraduationCap, Handshake, Plus, RefreshCw, TrendingUp, Users } from "lucide-react";
+import { useDemoMode } from "@/components/tour/DemoMode";
 import { Card } from "@/components/dashboard/student/ui";
 import type { CompanyDashboard as Data } from "@/lib/db/company";
 import { PageHead, STATUS_STYLE, TYPE_STYLE, fmtDate, primaryBtn } from "./ui";
 
 export default function CompanyDashboard({ data: initialData }: { data: Data }) {
   const [data, setData] = useState<Data>(initialData);
+  // Tour pages render sample data — never fetch or write from here.
+  const demo = useDemoMode();
   const [refreshing, setRefreshing] = useState(false);
   const [lastRefreshed, setLastRefreshed] = useState<Date>(new Date());
 
   const refreshLive = async () => {
+    if (demo) return;
     setRefreshing(true);
     try {
       const res = await fetch("/api/company/dashboard");

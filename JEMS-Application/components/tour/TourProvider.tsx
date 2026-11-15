@@ -66,7 +66,8 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
   const [active, setActive] = useState<TourId | null>(null);
   // Bumped on every start so a re-run of the same tour remounts Joyride.
   const [runId, setRunId] = useState(0);
-  // Tours are off by default across every portal; the help menu's switch turns them back on.
+  // Auto-start is off by default; the help menu's switch turns it back on.
+  // Explicit "Take the tour" / "Start the tour" clicks always work.
   const [tourEnabled, storeTourEnabled] = useLocalFlag(TOUR_ENABLED_KEY);
 
   const setTourEnabled = useCallback(
@@ -77,16 +78,26 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
     [storeTourEnabled],
   );
 
-  const start = useCallback(
-    (id: TourId) => {
-      if (!tourEnabled) return;
-      setActive(id);
-      setRunId((n) => n + 1);
+  const start = useCallback((id: TourId) => {
+    setActive(id);
+    setRunId((n) => n + 1);
+  }, []);
+
+  /** Ending a tour — at the last step or part-way — always returns to the home page. */
+  const finish = useCallback(
+    (id: TourId | null) => {
+      if (id) {
+        try {
+          window.localStorage.setItem(seenKey(id), "1");
+        } catch {}
+      }
+      setActive(null);
+      if (window.location.pathname !== "/") router.push("/");
     },
-    [tourEnabled],
+    [router],
   );
 
-  const stop = useCallback(() => setActive(null), []);
+  const stop = useCallback(() => finish(active), [finish, active]);
 
   const hasSeen = useCallback((id: TourId) => {
     try {
@@ -121,16 +132,13 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
         controls.next();
         return;
       }
-      if (data.type === "tour:end") {
-        if (active) {
-          try {
-            window.localStorage.setItem(seenKey(active), "1");
-          } catch {}
-        }
-        setActive(null);
+      const status = (data as { status?: string }).status;
+      const action = (data as { action?: string }).action;
+      if (data.type === "tour:end" || status === "finished" || status === "skipped" || action === "close" || action === "skip") {
+        finish(active);
       }
     },
-    [active],
+    [active, finish],
   );
 
   const value = useMemo(

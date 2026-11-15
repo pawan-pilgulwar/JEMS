@@ -1,13 +1,21 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { Bell, BriefcaseBusiness, CircleAlert, CircleCheck, Info, X } from "lucide-react";
+import { useDemoMode } from "@/components/tour/DemoMode";
 import type { AiTaskView } from "@/lib/ai-tasks/types";
 import type { NotificationKind, NotificationView } from "@/lib/db/notifications";
 
 const FAST_MS = 5_000;
 const SLOW_MS = 30_000;
+/** How long a heads-up toast stays on screen. */
+const TOAST_MS = 6_000;
+/** At most this many toasts are stacked at once (newest on top). */
+const MAX_TOASTS = 3;
+
+// ── Sound ───────────────────────────────────────────────────────
 
 // One shared AudioContext: browsers cap how many can exist, and a context
 // only produces sound after it has been resumed inside a user gesture.
@@ -20,7 +28,7 @@ function getAudioContext(): AudioContext | null {
   return audioCtx;
 }
 
-/** Resumes the shared context on the first click / key press so later chimes are audible. */
+/** Resumes the shared context on the first click / key press so later sounds are audible. */
 function unlockAudioOnFirstGesture(): () => void {
   const unlock = () => {
     getAudioContext()?.resume().catch(() => {});
@@ -32,30 +40,57 @@ function unlockAudioOnFirstGesture(): () => void {
   return unlock;
 }
 
-/** Plays a soft 2-tone chime (Web Audio, no asset). Silent if audio is still locked. */
+/**
+ * One short, bright "ding" in the style of a stock Android notification:
+ * a single bell-like tone (fundamental + soft overtone) with a fast attack and
+ * a quick decay. Generated with Web Audio, so there's no sound file to load.
+ * Silent until the user has interacted with the page (browser autoplay rules).
+ */
 function playNotificationSound() {
   try {
     const ctx = getAudioContext();
     if (!ctx || ctx.state !== "running") return;
-    const now = ctx.currentTime;
-    const playTone = (freq: number, start: number, duration: number) => {
+    const t = ctx.currentTime;
+    const out = ctx.createGain();
+    out.gain.setValueAtTime(0.0001, t);
+    out.gain.exponentialRampToValueAtTime(0.22, t + 0.008); // ~8 ms attack
+    out.gain.exponentialRampToValueAtTime(0.0001, t + 0.55); // bell-like decay
+    out.connect(ctx.destination);
+    // Fundamental (E6) with a quieter octave overtone gives the glassy "ding".
+    for (const [freq, level] of [[1318.5, 1], [2637, 0.28]] as const) {
       const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
+      const g = ctx.createGain();
       osc.type = "sine";
-      osc.frequency.setValueAtTime(freq, start);
-      gain.gain.setValueAtTime(0.15, start);
-      gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start(start);
-      osc.stop(start + duration);
-    };
-    playTone(659.25, now, 0.35); // E5
-    playTone(830.61, now + 0.1, 0.5); // G#5
+      osc.frequency.setValueAtTime(freq, t);
+      g.gain.value = level;
+      osc.connect(g).connect(out);
+      osc.start(t);
+      osc.stop(t + 0.6);
+    }
   } catch {
     // Audio is a nicety; never let it break the bell.
   }
 }
+
+/**
+ * Plays the sound once per batch of genuinely new notifications — and only in
+ * one browser tab, since every open tab polls and would otherwise ding for the
+ * same notification. Announced ids are shared through localStorage.
+ */
+const ANNOUNCED_KEY = "jems.notifications.announced";
+function announceOnce(ids: string[]): boolean {
+  try {
+    const seen = new Set<string>(JSON.parse(window.localStorage.getItem(ANNOUNCED_KEY) ?? "[]"));
+    const fresh = ids.filter((id) => !seen.has(id));
+    if (fresh.length === 0) return false;
+    window.localStorage.setItem(ANNOUNCED_KEY, JSON.stringify([...seen, ...fresh].slice(-100)));
+    return true;
+  } catch {
+    return true; // storage blocked: still announce in this tab
+  }
+}
+
+// ── UI helpers ──────────────────────────────────────────────────
 
 function timeAgo(iso: string) {
   const m = Math.floor((Date.now() - new Date(iso).getTime()) / 60_000);
@@ -72,23 +107,39 @@ const KIND_ICON: Record<NotificationKind, { icon: typeof Bell; tone: string }> =
   info: { icon: Info, tone: "bg-surface text-mediumgray" },
 };
 
+function KindIcon({ kind, size = "h-8 w-8" }: { kind: NotificationKind; size?: string }) {
+  const { icon: Icon, tone } = KIND_ICON[kind];
+  return (
+    <span className={`flex ${size} shrink-0 items-center justify-center rounded-lg ${tone}`}>
+      <Icon className="h-4 w-4" />
+    </span>
+  );
+}
+
 /**
  * Top-bar bell: notifications only — no in-progress loader. Polls fast while
- * an AI task is running, slowly otherwise. When a new
- * notification arrives after the first load, a toast surfaces it wherever
- * the user is in the app — that's how background AI results "report back".
+ * an AI task is running, slowly otherwise. New notifications after the first
+ * load appear as heads-up toasts at the top-right of the screen, with one
+ * sound per batch.
+ *
+ * The panel and the toasts are portalled to <body>: the top bars use
+ * `backdrop-blur`, and a backdrop filter turns the header into the containing
+ * block for `position: fixed` children — rendered in place, the toasts were
+ * pinned to the 64px header and spilled over the page.
  */
-export default function NotificationBell() {
+function LiveNotificationBell() {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<NotificationView[]>([]);
   const [unread, setUnread] = useState(0);
-  const [toast, setToast] = useState<NotificationView | null>(null);
+  const [toasts, setToasts] = useState<NotificationView[]>([]);
+  const [mounted, setMounted] = useState(false);
   const known = useRef<Set<string> | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // The poll re-schedules itself through this ref (a callback can't name itself).
   const pollRef = useRef<() => void>(() => {});
-  const ref = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
 
   const poll = useCallback(async () => {
     if (timer.current) clearTimeout(timer.current);
@@ -97,12 +148,12 @@ export default function NotificationBell() {
       const res = await fetch("/api/notifications", { cache: "no-store" });
       if (res.ok) {
         const data = (await res.json()) as { notifications: NotificationView[]; unread: number; activeTasks: AiTaskView[] };
-        // First load only records what exists; later polls toast what's new.
+        // First load only records what exists; later polls surface what's new.
         if (known.current) {
-          const fresh = data.notifications.find((n) => !n.read && !known.current!.has(n.id));
-          if (fresh) {
-            setToast(fresh);
-            playNotificationSound();
+          const fresh = data.notifications.filter((n) => !n.read && !known.current!.has(n.id));
+          if (fresh.length) {
+            setToasts((prev) => [...fresh, ...prev.filter((t) => !fresh.some((f) => f.id === t.id))].slice(0, MAX_TOASTS));
+            if (announceOnce(fresh.map((n) => n.id))) playNotificationSound();
           }
         }
         known.current = new Set(data.notifications.map((n) => n.id));
@@ -114,6 +165,12 @@ export default function NotificationBell() {
       // Network blip — keep the last state and retry.
     }
     timer.current = setTimeout(() => pollRef.current(), busy ? FAST_MS : SLOW_MS);
+  }, []);
+
+  // Portals need document.body, which only exists after hydration.
+  useEffect(() => {
+    const id = requestAnimationFrame(() => setMounted(true));
+    return () => cancelAnimationFrame(id);
   }, []);
 
   useEffect(() => unlockAudioOnFirstGesture(), []);
@@ -130,16 +187,18 @@ export default function NotificationBell() {
     };
   }, [poll]);
 
+  // Each toast dismisses itself after TOAST_MS (oldest first).
   useEffect(() => {
-    if (!toast) return;
-    const t = setTimeout(() => setToast(null), 8_000);
+    if (toasts.length === 0) return;
+    const t = setTimeout(() => setToasts((prev) => prev.slice(0, -1)), TOAST_MS);
     return () => clearTimeout(t);
-  }, [toast]);
+  }, [toasts]);
 
   useEffect(() => {
     if (!open) return;
     const onClick = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      const target = e.target as Node;
+      if (!panelRef.current?.contains(target) && !buttonRef.current?.contains(target)) setOpen(false);
     };
     const onEsc = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
     document.addEventListener("mousedown", onClick);
@@ -156,26 +215,32 @@ export default function NotificationBell() {
     await fetch("/api/notifications", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids }) }).catch(() => {});
   };
 
+  const dismiss = (id: string) => setToasts((prev) => prev.filter((t) => t.id !== id));
+
   const openItem = (n: NotificationView) => {
     if (!n.read) markRead([n.id]);
     setOpen(false);
-    setToast(null);
+    dismiss(n.id);
     if (n.link) {
       router.push(n.link);
       router.refresh();
     }
   };
 
-  const badge = unread;
+  const toggle = () => {
+    setOpen((v) => !v);
+    setToasts([]); // the panel shows them all; don't leave toasts on top of it
+  };
 
   return (
-    <div className="relative" ref={ref}>
+    <div className="relative">
       <button
+        ref={buttonRef}
         type="button"
-        aria-label={badge ? `Notifications (${badge} new)` : "Notifications"}
+        aria-label={unread ? `Notifications (${unread} new)` : "Notifications"}
         aria-haspopup="dialog"
         aria-expanded={open}
-        onClick={() => setOpen((v) => !v)}
+        onClick={toggle}
         className="relative flex h-9 w-9 items-center justify-center rounded-lg text-mediumgray transition-colors hover:bg-surface hover:text-navy"
       >
         <Bell className="h-5 w-5" />
@@ -186,81 +251,105 @@ export default function NotificationBell() {
         )}
       </button>
 
-      {open && (
-        <div
-          role="dialog"
-          aria-label="Notifications"
-          className="absolute right-0 top-full z-50 mt-2 w-[min(22rem,calc(100vw-2rem))] overflow-hidden rounded-xl border border-navy/[0.08] bg-white shadow-[var(--shadow-card)]"
-          style={{ animation: "fade-in 0.18s ease-out" }}
-        >
-          <div className="flex items-center justify-between border-b border-lightgray px-4 py-2.5">
-            <p className="text-sm font-semibold text-navy">Notifications</p>
-            {unread > 0 && (
-              <button type="button" onClick={() => markRead([])} className="text-xs font-semibold text-slate hover:underline">
-                Mark all read
-              </button>
-            )}
-          </div>
+      {mounted &&
+        open &&
+        createPortal(
+          <div
+            ref={panelRef}
+            role="dialog"
+            aria-label="Notifications"
+            // Just under the 64px top bar, right-aligned to the screen (never off-screen on phones).
+            className="fixed right-2 top-[4.5rem] z-[1000] flex max-h-[calc(100dvh-5.5rem)] w-[min(24rem,calc(100vw-1rem))] flex-col overflow-hidden rounded-xl border border-navy/[0.08] bg-white shadow-[0_12px_32px_rgba(15,23,42,0.18)] sm:right-4"
+            style={{ animation: "fade-in 0.18s ease-out" }}
+          >
+            <div className="flex shrink-0 items-center justify-between border-b border-lightgray px-4 py-2.5">
+              <p className="text-sm font-semibold text-navy">
+                Notifications{unread > 0 && <span className="ml-1.5 rounded-full bg-orange/10 px-1.5 py-0.5 text-[11px] font-semibold text-orange">{unread} new</span>}
+              </p>
+              <div className="flex items-center gap-2">
+                {unread > 0 && (
+                  <button type="button" onClick={() => markRead([])} className="text-xs font-semibold text-slate hover:underline">
+                    Mark all read
+                  </button>
+                )}
+                <button type="button" onClick={() => setOpen(false)} aria-label="Close notifications" className="rounded-md p-1 text-mediumgray hover:bg-surface hover:text-navy">
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
 
-          <div className="max-h-[26rem] overflow-y-auto">
-            {items.length === 0 ? (
-              <p className="px-4 py-8 text-center text-sm text-mediumgray">You&apos;re all caught up.</p>
-            ) : (
-              <ul className="divide-y divide-lightgray">
-                {items.map((n) => {
-                  const { icon: Icon, tone } = KIND_ICON[n.kind];
-                  return (
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+              {items.length === 0 ? (
+                <p className="px-4 py-8 text-center text-sm text-mediumgray">You&apos;re all caught up.</p>
+              ) : (
+                <ul className="divide-y divide-lightgray">
+                  {items.map((n) => (
                     <li key={n.id}>
                       <button
                         type="button"
                         onClick={() => openItem(n)}
-                        className={`flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-surface-2 ${n.read ? "" : "bg-orange/[0.03]"}`}
+                        className={`flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-surface-2 ${n.read ? "" : "bg-orange/[0.04]"}`}
                       >
-                        <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${tone}`}>
-                          <Icon className="h-4 w-4" />
-                        </span>
+                        <KindIcon kind={n.kind} />
                         <span className="min-w-0 flex-1">
                           <span className="flex items-start justify-between gap-2">
-                            <span className={`text-sm text-navy ${n.read ? "font-medium" : "font-semibold"}`}>{n.title}</span>
+                            <span className={`break-words text-sm text-navy ${n.read ? "font-medium" : "font-semibold"}`}>{n.title}</span>
                             {!n.read && <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-orange" aria-label="Unread" />}
                           </span>
-                          {n.body && <span className="mt-0.5 line-clamp-2 block text-xs text-mediumgray">{n.body}</span>}
+                          {n.body && <span className="mt-0.5 line-clamp-2 block break-words text-xs text-mediumgray">{n.body}</span>}
                           <span className="mt-1 block text-[11px] text-mediumgray">{timeAgo(n.createdAt)}</span>
                         </span>
                       </button>
                     </li>
-                  );
-                })}
-              </ul>
-            )}
-          </div>
-        </div>
-      )}
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>,
+          document.body,
+        )}
 
-      {toast && (
-        <div
-          role="status"
-          className="fixed bottom-4 right-4 z-[60] flex w-[min(22rem,calc(100vw-2rem))] items-start gap-3 rounded-xl border border-navy/[0.08] bg-white p-4 shadow-[var(--shadow-card)]"
-          style={{ animation: "fade-in 0.2s ease-out" }}
-        >
-          {(() => {
-            const { icon: Icon, tone } = KIND_ICON[toast.kind];
-            return (
-              <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${tone}`}>
-                <Icon className="h-4 w-4" />
-              </span>
-            );
-          })()}
-          <button type="button" onClick={() => openItem(toast)} className="min-w-0 flex-1 text-left">
-            <span className="block text-sm font-semibold text-navy">{toast.title}</span>
-            {toast.body && <span className="mt-0.5 line-clamp-2 block text-xs text-mediumgray">{toast.body}</span>}
-            {toast.link && <span className="mt-1 block text-xs font-semibold text-slate">View</span>}
-          </button>
-          <button type="button" onClick={() => setToast(null)} aria-label="Dismiss" className="rounded-md p-1 text-mediumgray hover:bg-surface hover:text-navy">
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-      )}
+      {mounted &&
+        !open &&
+        toasts.length > 0 &&
+        createPortal(
+          // Heads-up stack under the top bar; pointer events only on the cards themselves.
+          <div aria-live="polite" className="pointer-events-none fixed right-2 top-[4.5rem] z-[1000] flex w-[min(24rem,calc(100vw-1rem))] flex-col gap-2 sm:right-4">
+            {toasts.map((t) => (
+              <div
+                key={t.id}
+                role="status"
+                className="pointer-events-auto relative flex items-start gap-3 overflow-hidden rounded-xl border border-navy/[0.08] bg-white p-3.5 shadow-[0_12px_32px_rgba(15,23,42,0.18)]"
+                style={{ animation: "slide-down 0.25s ease-out" }}
+              >
+                <KindIcon kind={t.kind} size="h-9 w-9" />
+                <button type="button" onClick={() => openItem(t)} className="min-w-0 flex-1 text-left">
+                  <span className="block break-words text-sm font-semibold text-navy">{t.title}</span>
+                  {t.body && <span className="mt-0.5 line-clamp-2 block break-words text-xs text-mediumgray">{t.body}</span>}
+                  {t.link && <span className="mt-1 block text-xs font-semibold text-slate">View →</span>}
+                </button>
+                <button type="button" onClick={() => dismiss(t.id)} aria-label="Dismiss" className="shrink-0 rounded-md p-1 text-mediumgray hover:bg-surface hover:text-navy">
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            ))}
+          </div>,
+          document.body,
+        )}
     </div>
   );
+}
+
+/** Tour pages show a quiet bell: no polling, no real notifications. */
+export default function NotificationBell() {
+  const demo = useDemoMode();
+  if (demo) {
+    return (
+      <span aria-hidden="true" className="relative flex h-9 w-9 items-center justify-center rounded-lg text-mediumgray">
+        <Bell className="h-5 w-5" />
+        <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-orange px-1 text-[10px] font-bold text-white ring-2 ring-white">3</span>
+      </span>
+    );
+  }
+  return <LiveNotificationBell />;
 }

@@ -18,6 +18,7 @@ import {
   TrendingUp,
   Users,
 } from "lucide-react";
+import { useDemoMode } from "@/components/tour/DemoMode";
 import { Card } from "@/components/dashboard/student/ui";
 import type { FacultyDashboardData } from "@/lib/db/faculty";
 import type { CurriculumResponse } from "@/lib/agent/types";
@@ -32,6 +33,8 @@ const POPULAR_SUBJECTS = [
 
 export default function FacultyDashboard({ initialData }: { initialData: FacultyDashboardData }) {
   const [data, setData] = useState<FacultyDashboardData>(initialData);
+  // Tour pages render sample data — never fetch or write from here.
+  const demo = useDemoMode();
   const [refreshing, setRefreshing] = useState(false);
   const [lastRefreshed, setLastRefreshed] = useState<Date>(new Date());
 
@@ -46,6 +49,7 @@ export default function FacultyDashboard({ initialData }: { initialData: Faculty
   const [error, setError] = useState("");
 
   const refreshLive = async () => {
+    if (demo) return;
     setRefreshing(true);
     try {
       const res = await fetch("/api/faculty/dashboard");
@@ -63,6 +67,11 @@ export default function FacultyDashboard({ initialData }: { initialData: Faculty
   };
 
   const runCurriculumAnalysis = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (demo) {
+      setError("This is the guided tour with sample data — sign in to run the AI on your own data.");
+      return;
+    }
     e.preventDefault();
     if (!subject.trim()) return;
     setAnalyzing(true);

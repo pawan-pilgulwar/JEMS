@@ -96,7 +96,7 @@ services:
 
   analyzer:
     # build: ./analyzer
-    image: pawan0603/jems-agent:v3
+    image: pawan0603/jems-agent:v4
     restart: unless-stopped
     volumes:
       - ./analyzer:/app

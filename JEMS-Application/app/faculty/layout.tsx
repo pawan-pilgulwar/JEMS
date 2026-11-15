@@ -1,12 +1,7 @@
-import PortalShell, { type PortalNavItem } from "@/components/portal/PortalShell";
+import PortalShell from "@/components/portal/PortalShell";
+import { PORTAL_NAV } from "@/lib/portal-nav";
 import { requireRole } from "@/lib/auth/require-role";
 
-const NAV: PortalNavItem[] = [
-  { label: "Dashboard", href: "/faculty/dashboard", icon: "LayoutDashboard" },
-  { label: "Students", href: "/faculty/students", icon: "Users" },
-  { label: "Collaborations", href: "/faculty/collaborations", icon: "Handshake" },
-  { label: "My Profile", href: "/faculty/profile", icon: "UserRound" },
-];
 
 export default async function FacultyLayout({ children }: { children: React.ReactNode }) {
   const session = await requireRole("faculty");
@@ -14,7 +9,7 @@ export default async function FacultyLayout({ children }: { children: React.Reac
     <PortalShell
       tour="faculty"
       roleLabel="Academia"
-      nav={NAV}
+      nav={PORTAL_NAV.faculty}
       name={session.user.name ?? "Faculty"}
       email={session.user.email ?? ""}
     >

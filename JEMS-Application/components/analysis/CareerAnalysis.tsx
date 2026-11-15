@@ -1,19 +1,16 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { AnimatePresence, motion } from "framer-motion";
+import { motion } from "framer-motion";
 import {
   ArrowRight,
-  BookOpen,
-  Bot,
   Briefcase,
   Building,
   Check,
   CircleCheck,
   CircleDashed,
-  Cpu,
   GraduationCap,
   Handshake,
   LoaderCircle,
@@ -21,31 +18,16 @@ import {
   Play,
   RotateCcw,
   Route,
-  Search,
   ShieldCheck,
   Sparkles,
   Target,
   User,
-  Users,
 } from "lucide-react";
 import CodingEvidence from "@/components/ai/CodingEvidence";
 import DashboardShell, { DashboardContainer } from "@/components/dashboard/student/DashboardShell";
-import { Card, ProgressBar } from "@/components/dashboard/student/ui";
+import { Card } from "@/components/dashboard/student/ui";
 import type { ProfileAnalysisView } from "@/lib/ai/profile";
-import { AGENTS, type AgentId, type AgentRun, type AnalysisInput, type AnalysisResult } from "@/lib/agents/types";
-
-type AgentState = { status: "idle" | "queued" | "running" | "done"; shownLogs: number };
-
-const AGENT_ICON: Record<AgentId, typeof Search> = {
-  analysis: Search,
-  roadmap: Route,
-  learning: BookOpen,
-  assessment: ShieldCheck,
-  matching: Users,
-  collaboration: Handshake,
-};
-
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+import type { AnalysisInput, AnalysisResult } from "@/lib/agents/types";
 
 function timeAgo(iso: string) {
   const m = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
@@ -55,14 +37,6 @@ function timeAgo(iso: string) {
   return h < 24 ? `${h}h ago` : `${Math.floor(h / 24)}d ago`;
 }
 
-const initialStates = (): Record<AgentId, AgentState> =>
-  Object.fromEntries(AGENTS.map((a) => [a.id, { status: "idle", shownLogs: 0 }])) as Record<AgentId, AgentState>;
-
-/**
- * The "Ollama multi-agent layer" from the architecture diagram, demonstrated
- * end to end: inputs → orchestrated agents (replayed with their log traces) →
- * the six outputs. The agents themselves are rule-based (see lib/agents).
- */
 export default function CareerAnalysis({
   inputs,
   initialResult,
@@ -76,64 +50,25 @@ export default function CareerAnalysis({
 }) {
   const router = useRouter();
   const [result, setResult] = useState<AnalysisResult | null>(initialResult);
-  const [phase, setPhase] = useState<"idle" | "requesting" | "replaying" | "done">(initialResult ? "done" : "idle");
-  const [agents, setAgents] = useState<Record<AgentId, AgentState>>(() => {
-    const s = initialStates();
-    if (initialResult) for (const a of AGENTS) s[a.id] = { status: "done", shownLogs: 99 };
-    return s;
-  });
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const cancelled = useRef(false);
-
-  useEffect(() => () => { cancelled.current = true; }, []);
-
-  const replay = async (runs: AgentRun[]) => {
-    const s = initialStates();
-    for (const a of AGENTS) s[a.id] = { status: "queued", shownLogs: 0 };
-    setAgents({ ...s });
-    for (const run of runs) {
-      if (cancelled.current) return;
-      s[run.id] = { status: "running", shownLogs: 0 };
-      setAgents({ ...s });
-      const step = Math.max(180, run.durationMs / Math.max(1, run.logs.length));
-      for (let i = 0; i < run.logs.length; i++) {
-        await sleep(step);
-        if (cancelled.current) return;
-        s[run.id] = { status: "running", shownLogs: i + 1 };
-        setAgents({ ...s });
-      }
-      await sleep(220);
-      s[run.id] = { status: "done", shownLogs: run.logs.length };
-      setAgents({ ...s });
-    }
-  };
 
   const run = async () => {
     setError("");
-    setPhase("requesting");
-    setResult(null);
-    const s = initialStates();
-    for (const a of AGENTS) s[a.id] = { status: "queued", shownLogs: 0 };
-    setAgents(s);
+    setBusy(true);
     try {
       const res = await fetch("/api/student/analysis", { method: "POST" });
       const data = (await res.json().catch(() => ({}))) as { result?: AnalysisResult; error?: string };
       if (!res.ok || !data.result) throw new Error(data.error || "Could not run the analysis.");
-      setPhase("replaying");
-      await replay(data.result.runs);
-      if (cancelled.current) return;
       setResult(data.result);
-      setPhase("done");
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not run the analysis.");
-      setPhase(result ? "done" : "idle");
-      setAgents(initialStates());
+    } finally {
+      setBusy(false);
     }
   };
 
-  const busy = phase === "requesting" || phase === "replaying";
-  const doneCount = AGENTS.filter((a) => agents[a.id].status === "done").length;
   const topRequired = Object.entries(
     inputs.jobs.flatMap((j) => j.requiredSkills).reduce<Record<string, number>>((acc, s) => ((acc[s] = (acc[s] ?? 0) + 1), acc), {}),
   )
@@ -147,15 +82,15 @@ export default function CareerAnalysis({
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <span className="inline-flex items-center gap-1.5 rounded-full bg-slate/10 px-2.5 py-1 text-xs font-semibold text-slate">
-              <Cpu className="h-3.5 w-3.5" /> Multi-agent AI layer
+              <Sparkles className="h-3.5 w-3.5" /> AI Career Analysis
             </span>
             <h1 className="mt-3 text-2xl font-bold text-navy">AI Career Analysis</h1>
             <p className="mt-1 text-sm text-mediumgray">
-              Your profile and live industry requirements go through six coordinated agents to produce your skill profile, roadmap, learning plan, verification plan and matches.
+              Your profile and live industry requirements are analyzed to produce your skill profile, roadmap, learning plan, verification plan and job matches.
             </p>
           </div>
           <div className="flex items-center gap-3 self-start sm:self-auto">
-            {result && phase === "done" && (
+            {result && !busy && (
               <span className="text-xs text-mediumgray">Last run {timeAgo(result.generatedAt)}</span>
             )}
             <button
@@ -166,14 +101,14 @@ export default function CareerAnalysis({
               className="inline-flex items-center gap-2 rounded-lg bg-primary-gradient px-5 py-2.5 text-sm font-semibold text-white shadow-[0_4px_12px_rgba(234,88,12,0.25)] transition-transform hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
             >
               {busy ? <LoaderCircle className="h-4 w-4 animate-spin" /> : result ? <RotateCcw className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-              {busy ? "Agents working…" : result ? "Re-run analysis" : "Run analysis"}
+              {busy ? "Analyzing…" : result ? "Re-run analysis" : "Run analysis"}
             </button>
           </div>
         </div>
 
         {error && <p className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>}
 
-        {/* Inputs → Agents → Outputs */}
+        {/* Inputs → Outputs */}
         <div data-tour="analysis-inputs" className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           <Card className="p-5">
             <div className="flex items-center gap-2">
@@ -228,83 +163,8 @@ export default function CareerAnalysis({
         {/* AI Agent service: evidence from public coding activity (background task) */}
         <CodingEvidence initial={codingEvidence} defaultGithub={githubDefault} />
 
-        {/* Orchestration panel */}
-        <Card className="overflow-hidden">
-          <div data-tour="analysis-agents" className="flex flex-wrap items-center justify-between gap-3 border-b border-lightgray px-5 py-3.5">
-            <div className="flex items-center gap-2">
-              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-navy text-white"><Bot className="h-4 w-4" /></span>
-              <div>
-                <h2 className="text-sm font-semibold text-navy">Agent orchestration layer</h2>
-                <p className="text-[11px] text-mediumgray">Coordinates agents · manages context · generates final output</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-3">
-              <span className="rounded-full border border-lightgray px-2.5 py-1 text-[11px] font-medium text-mediumgray" title="These scoring agents are rule-based and instant. The AI Agent service powers roadmaps, AI tests, interviews and coding evidence.">
-                Scoring: rule-based · instant
-              </span>
-              <span className="text-xs font-medium tabular-nums text-navy">{doneCount} / {AGENTS.length}</span>
-            </div>
-          </div>
-          <div className="px-5 pt-4">
-            <ProgressBar value={(doneCount / AGENTS.length) * 100} barClass={doneCount === AGENTS.length ? "bg-emerald" : "bg-slate"} />
-          </div>
-          <div className="grid grid-cols-1 gap-3 p-5 md:grid-cols-2 xl:grid-cols-3">
-            {AGENTS.map((a, i) => {
-              const state = agents[a.id];
-              const run = result?.runs.find((r) => r.id === a.id) ?? null;
-              const Icon = AGENT_ICON[a.id];
-              return (
-                <div
-                  key={a.id}
-                  className={`rounded-xl border p-4 transition-colors ${
-                    state.status === "running" ? "border-slate bg-slate/5" : state.status === "done" ? "border-emerald/30 bg-emerald/5" : "border-lightgray bg-white"
-                  }`}
-                >
-                  <div className="flex items-start gap-3">
-                    <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${state.status === "done" ? "bg-emerald/10 text-emerald" : state.status === "running" ? "bg-slate/10 text-slate" : "bg-surface text-mediumgray"}`}>
-                      <Icon className="h-4 w-4" />
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center justify-between gap-2">
-                        <p className="text-sm font-semibold text-navy">{i + 1}. {a.name}</p>
-                        {state.status === "running" ? (
-                          <LoaderCircle className="h-4 w-4 animate-spin text-slate" />
-                        ) : state.status === "done" ? (
-                          <CircleCheck className="h-4 w-4 text-emerald" />
-                        ) : (
-                          <CircleDashed className="h-4 w-4 text-mediumgray/60" />
-                        )}
-                      </div>
-                      <p className="text-[11px] text-mediumgray">{a.role}</p>
-                    </div>
-                  </div>
-
-                  <ul className="mt-3 min-h-[3.5rem] space-y-1 font-mono text-[11px] leading-relaxed text-navy/80">
-                    {state.status === "idle" && (
-                      <li className="text-mediumgray">→ {a.inputs.join(" + ")}<br />← {a.outputs.join(", ")}</li>
-                    )}
-                    {state.status === "queued" && <li className="text-mediumgray">waiting for orchestrator…</li>}
-                    <AnimatePresence initial={false}>
-                      {run && state.status !== "idle" && state.status !== "queued" &&
-                        run.logs.slice(0, state.shownLogs).map((l, k) => (
-                          <motion.li key={k} initial={{ opacity: 0, x: -4 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.18 }}>
-                            <span className="text-slate">›</span> {l}
-                          </motion.li>
-                        ))}
-                    </AnimatePresence>
-                    {!run && state.status === "running" && <li className="text-mediumgray">processing…</li>}
-                  </ul>
-                  {state.status === "done" && run && (
-                    <p className="mt-2 border-t border-emerald/20 pt-2 text-xs font-semibold text-emerald">{run.summary}</p>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </Card>
-
         {/* Outputs */}
-        {result && phase === "done" && (
+        {result && (
           <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-6" data-tour="analysis-outputs">
             <div className="flex items-center gap-2">
               <Sparkles className="h-4 w-4 text-slate" />
@@ -387,7 +247,7 @@ export default function CareerAnalysis({
                         <span className="text-[11px] text-mediumgray">{p.test ? `Skill test: ${p.test}` : p.moduleTitle ? `Roadmap quiz: ${p.moduleTitle}` : "No test yet — stays self-declared"}</span>
                       </span>
                       {p.status === "pending" && p.test && (
-                        <Link href={`/student/assessment/test/${encodeURIComponent(p.test)}`} className="text-xs font-semibold text-slate hover:underline">Take test</Link>
+                        <Link href={`/student/assessment?take=${encodeURIComponent(p.test)}`} className="text-xs font-semibold text-slate hover:underline">Take test</Link>
                       )}
                       {p.status === "pending" && !p.test && p.moduleId != null && (
                         <Link href={`/student/roadmap/${p.moduleId}`} className="text-xs font-semibold text-slate hover:underline">Take quiz</Link>

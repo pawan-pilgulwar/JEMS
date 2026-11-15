@@ -22,6 +22,7 @@ import {
   TrendingUp,
 } from "lucide-react";
 import DashboardShell, { DashboardContainer } from "./DashboardShell";
+import { useDemoMode } from "@/components/tour/DemoMode";
 import { Card } from "./ui";
 import { useStudent } from "./StudentContext";
 import type { AiRoadmapSummary } from "@/lib/ai/roadmap";
@@ -183,6 +184,8 @@ export default function StudentDashboard({
   ai: DashboardAiData;
 }) {
   const [data, setData] = useState<DashboardData>(initialData);
+  // Tour pages render sample data — never fetch or write from here.
+  const demo = useDemoMode();
   const [ai, setAi] = useState<DashboardAiData>(initialAi);
   const [refreshing, setRefreshing] = useState(false);
   const [lastRefreshed, setLastRefreshed] = useState<Date>(new Date());
@@ -195,6 +198,7 @@ export default function StudentDashboard({
   const [advisorError, setAdvisorError] = useState("");
 
   const refreshLive = async () => {
+    if (demo) return;
     setRefreshing(true);
     try {
       const res = await fetch("/api/student/dashboard");
@@ -213,6 +217,10 @@ export default function StudentDashboard({
   };
 
   const runAdvisor = async () => {
+    if (demo) {
+      setAdvisorError("This is the guided tour with sample data — sign in to run the AI on your own data.");
+      return;
+    }
     setAdvising(true);
     setAdvisorError("");
     try {

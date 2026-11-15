@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { getSession, signIn } from "next-auth/react";
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { Check, Eye, EyeOff, Loader2 } from "lucide-react";
 import { ForgotPasswordFlow } from "@/components/auth/ForgotPasswordFlow";
 import GithubButton from "@/components/GithubButton";
@@ -17,7 +17,7 @@ const ROLES: Record<RoleKey, { label: string; heading: string; props: string[]; 
     label: "Student",
     heading: "Your dream job is closer than you think.",
     props: ["AI skill analysis & personalised roadmaps", "Verified skills, certificates & digital portfolio", "Smart matching to internships and jobs"],
-    demoEmail: "demo@jems.dev",
+    demoEmail: "aarav.sharma@student.jems.demo",
     quote: "I was stuck for 8 months. Jems got me job-ready in 4 weeks. Now earning 40% more.",
     who: "Priya Sharma · Hired at Google",
   },
@@ -25,7 +25,7 @@ const ROLES: Record<RoleKey, { label: string; heading: string; props: string[]; 
     label: "Company",
     heading: "Hire for skills you can actually verify.",
     props: ["Post internships & jobs with required skills", "Skill-ranked candidate shortlists", "Publish training programs & FDPs for academia"],
-    demoEmail: "company@jems.dev",
+    demoEmail: "campus.hiring@infosys.jems.demo",
     quote: "Our shortlist time dropped from days to minutes — every candidate came with verified skills.",
     who: "Talent lead · Capgemini",
   },
@@ -33,7 +33,7 @@ const ROLES: Record<RoleKey, { label: string; heading: string; props: string[]; 
     label: "Institution",
     heading: "See your students' path to placement.",
     props: ["Cohort skill-gap statistics vs industry demand", "Internship participation & placement readiness", "Industry collaboration for your faculty"],
-    demoEmail: "institution@jems.dev",
+    demoEmail: "placements@pes.jems.demo",
     quote: "For the first time the placement cell can see skill gaps before the placement season.",
     who: "Placement officer · PES University",
   },
@@ -41,12 +41,22 @@ const ROLES: Record<RoleKey, { label: string; heading: string; props: string[]; 
     label: "Faculty",
     heading: "Bring industry practice into your classroom.",
     props: ["Faculty development programs & industrial training", "Guest lectures, live projects & research partnerships", "Consultancy opportunities with industry"],
-    demoEmail: "faculty@jems.dev",
+    demoEmail: "kavita.raghunathan@pes.jems.demo",
     quote: "A four-week industrial immersion changed how I teach distributed systems.",
     who: "Dr. Priya Nair · Associate Professor",
   },
 };
-const DEMO_PASSWORD = "Demo@1234";
+const DEMO_PASSWORD = "Demo@123";
+const ROLE_KEYS: RoleKey[] = ["student", "company", "institution", "faculty"];
+
+/** Preselects the sign-in tab from `?role=` (the home page's "Explore … journey" buttons). */
+function RoleFromQuery({ onRole }: { onRole: (role: RoleKey) => void }) {
+  const requested = useSearchParams().get("role");
+  useEffect(() => {
+    if (requested && (ROLE_KEYS as string[]).includes(requested)) onRole(requested as RoleKey);
+  }, [requested, onRole]);
+  return null;
+}
 
 /** Shown when a GitHub login is bounced here because no account exists yet. */
 function NotRegisteredNotice() {
@@ -188,6 +198,7 @@ export default function LoginPage() {
 
               <Suspense fallback={null}>
                 <NotRegisteredNotice />
+                <RoleFromQuery onRole={setRole} />
               </Suspense>
 
               {/* Continue with GitHub — student accounts only */}

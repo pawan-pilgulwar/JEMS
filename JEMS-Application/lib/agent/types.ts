@@ -140,6 +140,10 @@ export interface GenerateRequest {
   topics?: string[];
   difficulty?: Difficulty;
   counts?: Partial<Record<QuestionType, number>>;
+  /** Question texts / coding titles the student has already seen for this subject — the agent writes new ones. */
+  avoid?: string[];
+  /** Random per request so repeat papers come out different. */
+  variation?: string;
 }
 
 export interface CodeTest {
