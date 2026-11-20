@@ -7,10 +7,9 @@ import { readJsonLimited } from "@/lib/http";
 import { rateLimit, tooManyRequests } from "@/lib/rate-limit";
 import { validateRoadmapRequest } from "@/lib/validation/ai";
 
-// The task runs in after() once the 202 is sent: /agents/prereqs (usually cached)
-// then /agents/roadmap (~570 s measured, up to AGENT_ROADMAP_TIMEOUT_MS = 750 s).
-// 800 s is the platform maximum.
-export const maxDuration = 800;
+// Vercel Hobby caps function duration at 300 s. Roadmap generation can take
+// longer, so reliable completion beyond this limit requires an external worker.
+export const maxDuration = 300;
 
 /** The student's generated AI roadmaps. */
 export async function GET() {
